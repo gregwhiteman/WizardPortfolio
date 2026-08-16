@@ -1059,12 +1059,45 @@ button.holding-row:active {
   color: #fff;
   overflow: hidden;
   box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.35);
+  cursor: pointer;
+}
+
+.coin-avatar:active {
+  transform: scale(0.94);
 }
 
 .coin-avatar.lg {
   width: 48px;
   height: 48px;
   font-size: 0.7rem;
+}
+
+.view-tv {
+  display: none;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.view-tv.view-active {
+  display: flex;
+}
+
+.tv-wrap {
+  flex: 1;
+  min-height: 360px;
+  height: calc(100dvh - 168px);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  background: #0a101c;
+  box-shadow: inset 0 0 0 1px rgba(212, 175, 55, 0.08);
+}
+
+.tv-wrap iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
 }
 
 .holding-name {

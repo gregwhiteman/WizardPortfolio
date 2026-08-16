@@ -352,7 +352,8 @@ function updateGlobalSpinner() {
 
 /** Navigation stack state */
 let nav = {
-  view: "home", // home | portfolio | asset | add-coin | settings
+  view: "home", // home | portfolio | asset | add-coin | settings | tv
+  tvReturn: null,
   portfolioId: null,
   coinId: null,
 };
@@ -683,7 +684,9 @@ function coinAvatarHtml(coin, { lg = false } = {}) {
   const cls = lg ? "coin-avatar lg" : "coin-avatar";
   const bg = coin?.color || "#d4af37";
   const fg = iconContrast(bg);
-  return `<div class="${cls}" style="background:${bg};color:${fg}" title="${escapeHtml(coin?.symbol || "")}">${escapeHtml((coin?.symbol || "?").slice(0, 4))}</div>`;
+  const id = coin?.id || "";
+  const label = `Open ${coin?.symbol || "asset"} chart`;
+  return `<span class="${cls}" style="background:${bg};color:${fg}" data-open-tv="${escapeHtml(id)}" role="button" tabindex="0" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">${escapeHtml((coin?.symbol || "?").slice(0, 4))}</span>`;
 }
 
 /** Fill an existing avatar element with brand color + symbol. */
@@ -695,6 +698,54 @@ function setCoinAvatarEl(el, coin) {
   el.style.background = coin.color || "#d4af37";
   el.style.color = iconContrast(coin.color || "#d4af37");
   el.textContent = coin.symbol.slice(0, 4);
+  el.dataset.openTv = coin.id;
+  el.setAttribute("role", "button");
+  el.setAttribute("tabindex", "0");
+  el.setAttribute("aria-label", `Open ${coin.symbol} chart`);
+  el.title = `Open ${coin.symbol} chart`;
+}
+
+const TV_CRYPTO_SYMBOLS = {
+  btc: "COINBASE:BTCUSD",
+  xrp: "COINBASE:XRPUSD",
+  xlm: "COINBASE:XLMUSD",
+  hbar: "CRYPTO:HBARUSD",
+  ada: "COINBASE:ADAUSD",
+  night: "CRYPTO:NIGHTUSD",
+  doge: "COINBASE:DOGEUSD",
+  ltc: "COINBASE:LTCUSD",
+};
+
+function tradingViewSymbol(asset) {
+  if (!asset) return "COINBASE:BTCUSD";
+  if (asset.tvSymbol) return asset.tvSymbol;
+  if (TV_CRYPTO_SYMBOLS[asset.id]) return TV_CRYPTO_SYMBOLS[asset.id];
+  if (asset.kind === "stock" || asset.yahooSymbol) {
+    return String(asset.yahooSymbol || asset.symbol || "").replace(/-/g, ".");
+  }
+  const sym = String(asset.symbol || "").toUpperCase().replace(/[^A-Z0-9.]/g, "");
+  return sym ? `${sym}USD` : "COINBASE:BTCUSD";
+}
+
+function tradingViewEmbedUrl(symbol) {
+  const params = new URLSearchParams({
+    symbol,
+    interval: "60",
+    timezone: "Etc/UTC",
+    theme: "dark",
+    style: "1",
+    locale: "en",
+    toolbarbg: "0a101c",
+    hideideas: "1",
+    hidesidetoolbar: "1",
+    symboledit: "1",
+    saveimage: "0",
+    withdateranges: "1",
+    hidevolume: "0",
+    backgroundColor: "#0a101c",
+    gridColor: "rgba(212,175,55,0.08)",
+  });
+  return `https://s.tradingview.com/widgetembed/?${params.toString()}`;
 }
 
 function escapeHtml(str) {
@@ -1904,6 +1955,9 @@ function setChangePill(container, changeUsd, changePct) {
 // ── Navigation ─────────────────────────────────────────────────────────────
 
 function showView(view, { portfolioId, coinId } = {}) {
+  if (view === "tv" && nav.view !== "tv") {
+    nav.tvReturn = { view: nav.view, portfolioId: nav.portfolioId, coinId: nav.coinId };
+  }
   nav.view = view;
   if (portfolioId !== undefined) nav.portfolioId = portfolioId;
   if (coinId !== undefined) nav.coinId = coinId;
@@ -1965,6 +2019,35 @@ function render() {
     title.hidden = false;
     title.textContent = "Codex";
     renderSettings();
+  } else if (nav.view === "tv") {
+    if (brand) brand.hidden = true;
+    title.hidden = false;
+    title.textContent = getAsset(nav.coinId)?.symbol || "Chart";
+    renderTvChart();
+  }
+}
+
+function renderTvChart() {
+  const asset = getAsset(nav.coinId);
+  if (!asset) {
+    showView("home");
+    return;
+  }
+  setCoinAvatarEl(document.getElementById("tv-avatar"), asset);
+  const nameEl = document.getElementById("tv-name");
+  const subEl = document.getElementById("tv-symbol");
+  if (nameEl) nameEl.textContent = asset.name;
+  if (subEl) {
+    const tvSym = tradingViewSymbol(asset);
+    subEl.textContent = `${asset.symbol} · ${tvSym}`;
+  }
+  const frame = document.getElementById("tv-frame");
+  if (!frame) return;
+  const symbol = tradingViewSymbol(asset);
+  const src = tradingViewEmbedUrl(symbol);
+  if (frame.dataset.symbol !== symbol) {
+    frame.dataset.symbol = symbol;
+    frame.src = src;
   }
 }
 
@@ -3675,7 +3758,14 @@ function wire() {
   });
 
   document.getElementById("btn-back").addEventListener("click", () => {
-    if (nav.view === "asset" || nav.view === "add-coin") {
+    if (nav.view === "tv") {
+      const backTo = nav.tvReturn || { view: "home" };
+      nav.tvReturn = null;
+      showView(backTo.view || "home", {
+        portfolioId: backTo.portfolioId,
+        coinId: backTo.coinId,
+      });
+    } else if (nav.view === "asset" || nav.view === "add-coin") {
       showView("portfolio", { portfolioId: nav.portfolioId });
     } else if (nav.view === "portfolio") {
       // Portfolios are managed from Settings
@@ -3683,6 +3773,29 @@ function wire() {
     } else if (nav.view === "settings") {
       showView("home");
     }
+  });
+
+  document.addEventListener(
+    "click",
+    (e) => {
+      const av = e.target.closest("[data-open-tv]");
+      if (!av || nav.view === "tv") return;
+      const id = av.getAttribute("data-open-tv");
+      if (!id || !getAsset(id)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      showView("tv", { coinId: id });
+    },
+    true
+  );
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const av = e.target.closest?.("[data-open-tv]");
+    if (!av || nav.view === "tv") return;
+    const id = av.getAttribute("data-open-tv");
+    if (!id || !getAsset(id)) return;
+    e.preventDefault();
+    showView("tv", { coinId: id });
   });
 
   document.getElementById("btn-settings").addEventListener("click", () => showView("settings"));
