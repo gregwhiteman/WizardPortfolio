@@ -1663,6 +1663,11 @@ button.holding-row:active {
   z-index: 500;
 }
 
+.kirlian-warped {
+  will-change: transform, filter;
+  transform-origin: center center;
+}
+
 /* ── Opening splash ── */
 .splash {
   position: absolute;

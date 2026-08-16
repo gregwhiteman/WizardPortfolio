@@ -3006,17 +3006,13 @@ function drawKirlianContact(ctx, t, pal, tick, screenW, screenH, power01) {
 
     if (charging) {
       const circleR = 24 + charge * 40;
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(x, y, circleR, 0, Math.PI * 2);
-      ctx.clip();
-
       const ripples = 3 + Math.round(charge * 5);
       for (let i = 0; i < ripples; i++) {
         const cycle = (tick * (0.04 + charge * 0.055) + i / ripples) % 1;
         const radius = 5 + cycle * circleR;
-        const fade = (1 - cycle) * (0.28 + charge * 0.72);
-        if (fade < 0.05) continue;
+        const edge = Math.max(0, 1 - Math.pow(radius / circleR, 2.6));
+        const fade = (1 - cycle) * (0.28 + charge * 0.72) * edge;
+        if (fade < 0.04) continue;
         ctx.save();
         ctx.globalAlpha = alpha * fade;
         drawWateryRipple(
@@ -3038,10 +3034,12 @@ function drawKirlianContact(ctx, t, pal, tick, screenW, screenH, power01) {
         const seed = (t.seed + i * 311 + Math.floor(tick / 2) * 19) | 0;
         const r0 = kirlianRand(seed);
         const ang = r0 * Math.PI * 2 + tick * 0.04;
-        const len = 10 + charge * circleR * (0.35 + r0 * 0.45);
+        const len = 10 + charge * circleR * (0.28 + r0 * 0.32);
+        ctx.save();
+        ctx.globalAlpha = alpha * (0.35 + charge * 0.5);
         drawKirlianBranch(ctx, x, y, ang, len, 0.6 + charge * 1.8 * r0, 2, seed, pal, 0.12);
+        ctx.restore();
       }
-      ctx.restore();
     }
 
     for (let i = 0; i < leaders; i++) {
@@ -3120,11 +3118,73 @@ function wireKirlian() {
    * }>}
    */
   const contacts = new Map();
+  const warped = new Set();
+  let warpEls = null;
   let raf = 0;
   let tick = 0;
   let cssW = 0;
   let cssH = 0;
   let dpr = 1;
+
+  function collectWarpEls() {
+    return Array.from(
+      document.querySelectorAll(
+        "#app .view.view-active .summary-card, #app .view.view-active .holding-row, #app .view.view-active .pf-card, #app .view.view-active .settings-group, #app .view.view-active .section-head, #app .view.view-active h2, #app .view.view-active .coin-avatar, #app .view.view-active .field-input, #app .view.view-active .btn-primary, #app .view.view-active .btn-secondary, #app .brand, #app .topbar-title"
+      )
+    );
+  }
+
+  function clearWarp() {
+    for (const el of warped) {
+      el.classList.remove("kirlian-warped");
+      el.style.transform = "";
+      el.style.filter = "";
+    }
+    warped.clear();
+    warpEls = null;
+  }
+
+  function applyBlastWarp(cx, cy, expand, power01, blastLife) {
+    if (!warpEls) warpEls = collectWarpEls();
+    const reach = Math.hypot(cssW, cssH);
+    const scale = 0.38 + power01 * 0.5;
+    const band = 52 + power01 * 90;
+    const amp = (12 + power01 * 26) * blastLife;
+
+    for (const el of warpEls) {
+      if (!el.isConnected) continue;
+      const box = el.getBoundingClientRect();
+      if (box.width < 8 || box.height < 8) continue;
+      const ex = box.left + box.width / 2;
+      const ey = box.top + box.height / 2;
+      const d = Math.hypot(ex - cx, ey - cy) || 1;
+      let wave = 0;
+      for (let i = 0; i < 5; i++) {
+        const phase = Math.max(0, expand * 1.08 - i * 0.09);
+        if (phase <= 0.02) continue;
+        const radius = 14 + phase * reach * scale;
+        const delta = d - radius;
+        const env = Math.exp(-(delta * delta) / (2 * band * band));
+        wave += Math.sin(delta * 0.065 + i * 0.7) * env * (1 - i * 0.12);
+      }
+      wave *= blastLife;
+      if (Math.abs(wave) < 0.025) {
+        if (warped.has(el)) {
+          el.classList.remove("kirlian-warped");
+          el.style.transform = "";
+          el.style.filter = "";
+          warped.delete(el);
+        }
+        continue;
+      }
+      const nx = (ex - cx) / d;
+      const ny = (ey - cy) / d;
+      el.classList.add("kirlian-warped");
+      el.style.transform = `translate3d(${(nx * wave * amp).toFixed(2)}px, ${(ny * wave * amp * 0.92).toFixed(2)}px, 0) scale(${(1 + wave * 0.07).toFixed(4)}, ${(1 - wave * 0.055).toFixed(4)}) skewX(${(wave * 3.6).toFixed(2)}deg)`;
+      el.style.filter = `contrast(${(1 + Math.abs(wave) * 0.22).toFixed(3)}) saturate(${(1 + Math.abs(wave) * 0.18).toFixed(3)})`;
+      warped.add(el);
+    }
+  }
 
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -3157,6 +3217,7 @@ function wireKirlian() {
 
     const pal = kirlianPalette();
     let alive = false;
+    let warpSrc = null;
     for (const [id, t] of contacts) {
       if (t.held && !t.blast) {
         // Charge faster at higher Lightning Power (~0.7s at 100, ~1.4s at 20)
@@ -3182,6 +3243,7 @@ function wireKirlian() {
           continue;
         }
         alive = true;
+        if (t.blast) warpSrc = t;
       } else {
         contacts.delete(id);
         continue;
@@ -3189,9 +3251,18 @@ function wireKirlian() {
       drawKirlianContact(ctx, t, pal, tick, cssW, cssH, power01);
     }
 
+    if (warpSrc) {
+      applyBlastWarp(warpSrc.x, warpSrc.y, 1 - warpSrc.blastLife, power01, Math.max(0, warpSrc.blastLife));
+    } else if (warped.size) {
+      clearWarp();
+    }
+
     ctx.globalCompositeOperation = "source-over";
     if (alive) raf = requestAnimationFrame(frame);
-    else ctx.clearRect(0, 0, cssW, cssH);
+    else {
+      clearWarp();
+      ctx.clearRect(0, 0, cssW, cssH);
+    }
   }
 
   function upsert(id, clientX, clientY) {
