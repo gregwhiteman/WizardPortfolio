@@ -1072,20 +1072,35 @@ button.holding-row:active {
   font-size: 0.7rem;
 }
 
+.app.tv-open .views {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: var(--safe-bottom);
+}
+
 .view-tv {
   display: none;
+  flex: 1;
   flex-direction: column;
   min-height: 0;
+  padding: 10px 12px 12px;
 }
 
 .view-tv.view-active {
   display: flex;
 }
 
+.view-tv .asset-hero {
+  flex-shrink: 0;
+  margin-bottom: 10px;
+}
+
 .tv-wrap {
-  flex: 1;
-  min-height: 360px;
-  height: calc(100dvh - 168px);
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
   border-radius: var(--radius-lg);
   overflow: hidden;
   border: 1px solid var(--border-strong);
@@ -1094,6 +1109,8 @@ button.holding-row:active {
 }
 
 .tv-wrap iframe {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;

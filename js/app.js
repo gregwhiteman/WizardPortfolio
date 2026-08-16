@@ -109,6 +109,36 @@ const COINS = [
     explorer: (a) => `https://litecoinspace.org/address/${a}`,
     fetchBalance: fetchLtcBalance,
   },
+  {
+    id: "gold",
+    name: "Gold",
+    symbol: "XAU",
+    kind: "metal",
+    unit: "oz",
+    yahooSymbol: "GC=F",
+    tvSymbol: "XAUUSD",
+    decimals: 4,
+    color: "#d4af37",
+    placeholder: "",
+    note: "Spot gold priced per troy ounce. Add ounces you hold.",
+    explorer: null,
+    fetchBalance: null,
+  },
+  {
+    id: "silver",
+    name: "Silver",
+    symbol: "XAG",
+    kind: "metal",
+    unit: "oz",
+    yahooSymbol: "SI=F",
+    tvSymbol: "XAGUSD",
+    decimals: 4,
+    color: "#c0c7d1",
+    placeholder: "",
+    note: "Spot silver priced per troy ounce. Add ounces you hold.",
+    explorer: null,
+    fetchBalance: null,
+  },
 ];
 
 const COIN_BY_ID = Object.fromEntries(COINS.map((c) => [c.id, c]));
@@ -138,6 +168,9 @@ function hydrateCustomAsset(raw) {
     yahooSymbol,
     decimals: Number.isFinite(Number(raw.decimals)) ? Number(raw.decimals) : kind === "stock" ? 4 : 8,
     color: raw.color || colorFromSymbol(symbol),
+    lastUsd: Number.isFinite(Number(raw.lastUsd)) ? Number(raw.lastUsd) : null,
+    lastChange24h: Number.isFinite(Number(raw.lastChange24h)) ? Number(raw.lastChange24h) : null,
+    lastUsdAt: Number(raw.lastUsdAt) || null,
     placeholder: "",
     note: kind === "stock" ? "Equities use manual amounts (no on-chain wallets)." : "Manual amounts only for this relic.",
     explorer: null,
@@ -162,6 +195,9 @@ function normalizeCustomAssets(list) {
       yahooSymbol: asset.yahooSymbol,
       decimals: asset.decimals,
       color: asset.color,
+      lastUsd: Number.isFinite(Number(raw.lastUsd)) ? Number(raw.lastUsd) : asset.lastUsd,
+      lastChange24h: Number.isFinite(Number(raw.lastChange24h)) ? Number(raw.lastChange24h) : asset.lastChange24h,
+      lastUsdAt: Number(raw.lastUsdAt) || asset.lastUsdAt || null,
     });
   }
   return out;
@@ -209,6 +245,12 @@ function ensureCustomAsset(result) {
 }
 
 function findExistingAsset(result) {
+  if (result.existingId && getAsset(result.existingId)) return getAsset(result.existingId);
+  const hint = `${result.symbol || ""} ${result.yahooSymbol || ""} ${result.name || ""}`.toUpperCase();
+  if (!result.geckoId && /\b(XAU|XAUUSD|GC=F)\b/.test(hint)) return getAsset("gold");
+  if (!result.geckoId && /\b(XAG|XAGUSD|SI=F)\b/.test(hint)) return getAsset("silver");
+  if (result.kind === "metal" && /GOLD|XAU/.test(hint)) return getAsset("gold");
+  if (result.kind === "metal" && /SILVER|XAG/.test(hint)) return getAsset("silver");
   if (result.kind === "crypto" && result.geckoId) {
     return allAssets().find((a) => a.geckoId === result.geckoId) || null;
   }
@@ -504,7 +546,7 @@ function setExchangeFeePct(raw) {
 
 function normalizeLightningPower(raw) {
   const n = Number(raw);
-  if (!Number.isFinite(n)) return 40;
+  if (!Number.isFinite(n)) return 2;
   return Math.max(0, Math.min(100, Math.round(n)));
 }
 
@@ -541,7 +583,7 @@ function defaultStore() {
     version: 2,
     activePortfolioId: id,
     exchangeFeePct: 0,
-    lightningPower: 40,
+    lightningPower: 2,
     lightningStrikes: true,
     customAssets: [],
     portfolios: [
@@ -592,7 +634,7 @@ function loadStore() {
       }
       const migrated = {
         exchangeFeePct: 0,
-        lightningPower: 40,
+        lightningPower: 2,
         lightningStrikes: true,
         customAssets: [],
         version: 2,
@@ -642,16 +684,26 @@ function formatUsd(n, digits) {
   }).format(n);
 }
 
+function amountUnit(symbol) {
+  const s = String(symbol || "").toUpperCase();
+  if (s === "OZ" || s === "XAU" || s === "XAG" || s === "GOLD" || s === "SILVER") return "oz";
+  const asset = getAsset(s.toLowerCase()) || allAssets().find((a) => a.symbol === symbol);
+  if (asset?.unit) return asset.unit;
+  if (asset?.kind === "metal") return "oz";
+  return symbol;
+}
+
 function formatAmt(n, symbol) {
-  if (n == null || Number.isNaN(n)) return `— ${symbol}`;
+  const unit = amountUnit(symbol);
+  if (n == null || Number.isNaN(n)) return `— ${unit}`;
   const abs = Math.abs(n);
-  let digits = 8;
+  let digits = unit === "oz" ? 4 : 8;
   if (abs >= 1000) digits = 2;
-  else if (abs >= 1) digits = 4;
-  else if (abs >= 0.01) digits = 6;
+  else if (abs >= 1) digits = unit === "oz" ? 4 : 4;
+  else if (abs >= 0.01) digits = unit === "oz" ? 4 : 6;
   return `${new Intl.NumberFormat("en-US", {
     maximumFractionDigits: digits,
-  }).format(n)} ${symbol}`;
+  }).format(n)} ${unit}`;
 }
 
 function formatPct(pct) {
@@ -711,7 +763,7 @@ const TV_CRYPTO_SYMBOLS = {
   xlm: "COINBASE:XLMUSD",
   hbar: "CRYPTO:HBARUSD",
   ada: "COINBASE:ADAUSD",
-  night: "CRYPTO:NIGHTUSD",
+  night: "BINANCE:NIGHTUSDT",
   doge: "COINBASE:DOGEUSD",
   ltc: "COINBASE:LTCUSD",
 };
@@ -742,6 +794,7 @@ function tradingViewEmbedUrl(symbol) {
     saveimage: "0",
     withdateranges: "1",
     hidevolume: "0",
+    autosize: "1",
     backgroundColor: "#0a101c",
     gridColor: "rgba(212,175,55,0.08)",
   });
@@ -774,21 +827,71 @@ async function fetchJson(url, options = {}, timeoutMs = 15000) {
 }
 
 async function fetchJsonCors(url, timeoutMs = 15000) {
-  try {
-    return await fetchJson(url, {}, timeoutMs);
-  } catch {
+  const proxies = [
+    url,
+    `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+  ];
+  let lastErr;
+  for (const u of proxies) {
     try {
-      return await fetchJson(`https://corsproxy.io/?${encodeURIComponent(url)}`, {}, timeoutMs);
-    } catch {
-      const wrap = await fetchJson(
-        `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-        {},
-        timeoutMs
-      );
-      if (wrap && typeof wrap.contents === "string") return JSON.parse(wrap.contents);
-      return wrap;
+      const data = await fetchJson(u, {}, timeoutMs);
+      if (data && typeof data.contents === "string") {
+        try {
+          return JSON.parse(data.contents);
+        } catch {
+          /* not wrapped json */
+        }
+      }
+      return data;
+    } catch (err) {
+      lastErr = err;
     }
   }
+  throw lastErr || new Error("Network error");
+}
+
+/** Live quote, else last shown/saved price so the hoard never blanks. */
+function getQuote(id) {
+  const live = prices[id];
+  if (live && Number.isFinite(Number(live.usd))) {
+    return { usd: Number(live.usd), change24h: Number(live.change24h) || 0 };
+  }
+  const asset = getAsset(id);
+  if (asset && Number.isFinite(Number(asset.lastUsd))) {
+    return { usd: Number(asset.lastUsd), change24h: Number(asset.lastChange24h) || 0 };
+  }
+  return null;
+}
+
+function seedPricesFromAssets() {
+  for (const a of allAssets()) {
+    if (prices[a.id] && Number.isFinite(Number(prices[a.id].usd))) continue;
+    if (Number.isFinite(Number(a.lastUsd))) {
+      prices[a.id] = {
+        usd: Number(a.lastUsd),
+        change24h: Number(a.lastChange24h) || 0,
+      };
+    }
+  }
+}
+
+function rememberQuotes(map) {
+  if (!map || !Array.isArray(store.customAssets) || !store.customAssets.length) return;
+  let changed = false;
+  store.customAssets = store.customAssets.map((a) => {
+    const q = map[a.id];
+    if (!q || !Number.isFinite(Number(q.usd))) return a;
+    changed = true;
+    return {
+      ...a,
+      lastUsd: Number(q.usd),
+      lastChange24h: Number(q.change24h) || 0,
+      lastUsdAt: Date.now(),
+    };
+  });
+  if (changed) saveStore();
 }
 
 async function fetchJsonRetry(url, options = {}, attempts = 2) {
@@ -916,10 +1019,7 @@ async function fetchNightBalance(address) {
   return raw / 10 ** decimals;
 }
 
-async function fetchStockQuote(symbol) {
-  const data = await fetchJsonCors(
-    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`
-  );
+function parseYahooChart(data) {
   const meta = data?.chart?.result?.[0]?.meta;
   const price = Number(meta?.regularMarketPrice);
   if (!Number.isFinite(price)) return null;
@@ -928,27 +1028,70 @@ async function fetchStockQuote(symbol) {
   return { usd: price, change24h };
 }
 
+function parseNasdaqInfo(data) {
+  const p = data?.data?.primaryData;
+  if (!p) return null;
+  const price = Number(String(p.lastSalePrice || "").replace(/[$,]/g, ""));
+  if (!Number.isFinite(price) || price <= 0) return null;
+  const change24h = Number(String(p.percentageChange || "").replace(/[%+,]/g, ""));
+  return { usd: price, change24h: Number.isFinite(change24h) ? change24h : 0 };
+}
+
+async function fetchStockQuote(symbol) {
+  const sym = String(symbol || "").trim();
+  if (!sym) return null;
+  const yahoo = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=5d`;
+  const yahoo2 = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=5d`;
+  const ns = encodeURIComponent(sym.replace(/-/g, "."));
+  const nasdaq = `https://api.nasdaq.com/api/quote/${ns}/info?assetclass=stocks`;
+  const nasdaqEtf = `https://api.nasdaq.com/api/quote/${ns}/info?assetclass=etf`;
+
+  const tries = [
+    () => fetchJson(yahoo).then(parseYahooChart),
+    () => fetchJson(yahoo2).then(parseYahooChart),
+    () => fetchJsonCors(yahoo).then(parseYahooChart),
+    () => fetchJsonCors(yahoo2).then(parseYahooChart),
+    () => fetchJsonCors(nasdaq).then(parseNasdaqInfo),
+    () => fetchJsonCors(nasdaqEtf).then(parseNasdaqInfo),
+  ];
+  for (const tryOne of tries) {
+    try {
+      const q = await tryOne();
+      if (q && Number.isFinite(q.usd)) return q;
+    } catch {
+      /* next source */
+    }
+  }
+  return null;
+}
+
 async function fetchPrices() {
   const assets = allAssets();
   const cryptos = assets.filter((a) => a.geckoId);
-  const stocks = assets.filter((a) => a.kind === "stock" && a.yahooSymbol);
+  const stocks = assets.filter((a) => a.yahooSymbol && !a.geckoId);
   const next = { ...prices };
-  let any = false;
+  seedPricesFromAssets();
+  for (const [id, q] of Object.entries(prices)) {
+    if (q && Number.isFinite(q.usd) && !next[id]) next[id] = q;
+  }
 
   if (cryptos.length) {
-    const ids = [...new Set(cryptos.map((c) => c.geckoId))].join(",");
-    const data = await fetchJson(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=usd&include_24hr_change=true`
-    );
-    for (const coin of cryptos) {
-      const row = data[coin.geckoId];
-      if (row && row.usd != null && Number.isFinite(Number(row.usd))) {
-        next[coin.id] = {
-          usd: Number(row.usd),
-          change24h: Number(row.usd_24h_change) || 0,
-        };
-        any = true;
+    try {
+      const ids = [...new Set(cryptos.map((c) => c.geckoId))].join(",");
+      const data = await fetchJson(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=usd&include_24hr_change=true`
+      );
+      for (const coin of cryptos) {
+        const row = data[coin.geckoId];
+        if (row && row.usd != null && Number.isFinite(Number(row.usd))) {
+          next[coin.id] = {
+            usd: Number(row.usd),
+            change24h: Number(row.usd_24h_change) || 0,
+          };
+        }
       }
+    } catch {
+      /* keep last crypto quotes */
     }
   }
 
@@ -957,10 +1100,7 @@ async function fetchPrices() {
       stocks.map((stock) => async () => {
         try {
           const q = await fetchStockQuote(stock.yahooSymbol);
-          if (q) {
-            next[stock.id] = q;
-            any = true;
-          }
+          if (q) next[stock.id] = q;
         } catch {
           /* keep last quote */
         }
@@ -969,7 +1109,9 @@ async function fetchPrices() {
     );
   }
 
-  if (any) prices = next;
+  prices = next;
+  rememberQuotes(next);
+  saveMarketSnapshot();
 }
 
 const CHART_CACHE_MS = 5 * 60 * 1000;
@@ -1015,7 +1157,7 @@ async function fetchCoinChart(coinId, days = "1") {
     return cached.points;
   }
 
-  if (coin.kind === "stock" && coin.yahooSymbol) {
+  if (coin.yahooSymbol && (coin.kind === "stock" || coin.kind === "metal")) {
     try {
       const points = await fetchStockChart(coin.yahooSymbol, days);
       if (points.length) {
@@ -1103,7 +1245,7 @@ async function buildPortfolioSeries(holdings, days = "1") {
       return { series: [], partial: false, failed };
     }
     // Soft fallback only when we have prices but empty charts
-    const total = active.reduce((s, h) => s + h.balance * (prices[h.coinId]?.usd || 0), 0);
+    const total = active.reduce((s, h) => s + h.balance * (getQuote(h.coinId)?.usd || 0), 0);
     const now = Date.now();
     return {
       series: [
@@ -1387,7 +1529,7 @@ function costBasisInfo(pf, coinId) {
   const balance = balInfo.hasData ? balInfo.balance : 0;
   const cost = Number(holding.costBasisUsd) || 0;
   const avg = balance > 0 && cost > 0 ? cost / balance : null;
-  const px = prices[coinId]?.usd ?? 0;
+  const px = getQuote(coinId)?.usd ?? 0;
   const market = balance * px;
   const pl = cost > 0 ? market - cost : null;
   const plPct = cost > 0 && Number.isFinite(pl) ? (pl / cost) * 100 : null;
@@ -1446,8 +1588,8 @@ function portfolioTotals(pf) {
     const info = coinBalanceInPortfolio(pf, coin.id);
     sourceCount += info.sourceCount;
     assets += 1;
-    const px = prices[coin.id]?.usd ?? 0;
-    const ch = prices[coin.id]?.change24h ?? 0;
+    const px = getQuote(coin.id)?.usd ?? 0;
+    const ch = getQuote(coin.id)?.change24h ?? 0;
     const usd = (info.hasData ? info.balance : 0) * px;
     totalUsd += usd;
     const prev = ch === -100 ? 0 : usd / (1 + ch / 100);
@@ -1969,6 +2111,7 @@ function render() {
   document.querySelectorAll(".view").forEach((v) => {
     v.classList.toggle("view-active", v.dataset.view === nav.view);
   });
+  document.getElementById("app")?.classList.toggle("tv-open", nav.view === "tv");
 
   const back = document.getElementById("btn-back");
   const settingsBtn = document.getElementById("btn-settings");
@@ -2073,8 +2216,8 @@ function renderHome() {
   for (const r of rows) {
     const coin = getAsset(r.coinId);
     if (!coin) continue;
-    const px = prices[coin.id]?.usd;
-    const ch = prices[coin.id]?.change24h;
+    const px = getQuote(coin.id)?.usd;
+    const ch = getQuote(coin.id)?.change24h;
     const pct = formatPct(ch);
 
     // Loading if any included portfolio still fetching this coin
@@ -2303,15 +2446,15 @@ function renderPortfolio() {
   const sorted = [...coinsTracked].sort((a, b) => {
     const ba = coinBalanceInPortfolio(pf, a.id);
     const bb = coinBalanceInPortfolio(pf, b.id);
-    const ua = (ba.hasData ? ba.balance : 0) * (prices[a.id]?.usd || 0);
-    const ub = (bb.hasData ? bb.balance : 0) * (prices[b.id]?.usd || 0);
+    const ua = (ba.hasData ? ba.balance : 0) * (getQuote(a.id)?.usd || 0);
+    const ub = (bb.hasData ? bb.balance : 0) * (getQuote(b.id)?.usd || 0);
     return ub - ua;
   });
 
   for (const coin of sorted) {
     const info = coinBalanceInPortfolio(pf, coin.id);
-    const px = prices[coin.id]?.usd;
-    const ch = prices[coin.id]?.change24h;
+    const px = getQuote(coin.id)?.usd;
+    const ch = getQuote(coin.id)?.change24h;
     const usd = info.hasData ? info.balance * (px || 0) : null;
     const pct = formatPct(ch);
     const holding = getCoinHolding(pf, coin.id);
@@ -2370,8 +2513,8 @@ function renderAsset() {
   setCoinAvatarEl(document.getElementById("asset-avatar"), coin);
 
   document.getElementById("asset-name").textContent = coin.name;
-  const px = prices[coin.id]?.usd;
-  const ch = prices[coin.id]?.change24h;
+  const px = getQuote(coin.id)?.usd;
+  const ch = getQuote(coin.id)?.change24h;
   const pct = formatPct(ch);
   document.getElementById("asset-price-line").innerHTML =
     `${px != null ? formatUsd(px) : "—"} · <span class="holding-pct ${pct.cls}">${pct.text}</span>`;
@@ -2438,7 +2581,8 @@ function renderAsset() {
     document.getElementById("address-input").placeholder = coin.placeholder || "Paste wallet address";
     document.getElementById("address-hint").textContent = coin.note || "";
   }
-  document.getElementById("manual-amount-input").placeholder = `Amount in ${coin.symbol}`;
+  document.getElementById("manual-amount-input").placeholder =
+    coin.kind === "metal" || coin.unit === "oz" ? "Ounces (oz)" : `Amount in ${coin.symbol}`;
 
   // Price paid: default to live market price (editable). Don't overwrite user edits.
   if (manualPriceCoinId !== coin.id) {
@@ -2446,7 +2590,8 @@ function renderAsset() {
     manualPriceDirty = false;
   }
   const priceInput = document.getElementById("manual-price-input");
-  priceInput.placeholder = `USD per ${coin.symbol}`;
+  priceInput.placeholder =
+    coin.kind === "metal" || coin.unit === "oz" ? "USD per oz" : `USD per ${coin.symbol}`;
   if (document.activeElement !== priceInput && !manualPriceDirty) {
     priceInput.value = px != null && px > 0 ? String(roundPriceInput(px)) : "";
   }
@@ -2571,9 +2716,13 @@ function renderAddCoin() {
   const list = document.getElementById("coin-pick-list");
   if (!list) return;
   list.innerHTML = "";
-  for (const coin of allAssets()) {
-    const badge = coin.fetchBalance ? null : coin.kind === "stock" ? "Stock" : "Coin";
-    const btn = appendAssetPickRow(list, coin, { badge: COIN_BY_ID[coin.id] ? null : badge });
+  const assets = allAssets();
+  const pinned = assets.filter((c) => c.kind === "metal");
+  const rest = assets.filter((c) => c.kind !== "metal");
+  for (const coin of [...pinned, ...rest]) {
+    const badge =
+      coin.kind === "metal" ? "Metal" : COIN_BY_ID[coin.id] ? null : coin.kind === "stock" ? "Stock" : "Coin";
+    const btn = appendAssetPickRow(list, coin, { badge });
     btn.addEventListener("click", () => showView("asset", { coinId: coin.id }));
     list.appendChild(btn);
   }
@@ -2626,15 +2775,30 @@ function renderSearchResults(results, query) {
       symbol: hit.symbol,
       color: colorFromSymbol(hit.symbol),
     };
-    const badge = hit.kind === "stock" ? `Stock${hit.exch ? ` · ${hit.exch}` : ""}` : "Coin";
+    const badge =
+      hit.kind === "metal" ? "Metal · oz" : hit.kind === "stock" ? `Stock${hit.exch ? ` · ${hit.exch}` : ""}` : "Coin";
     const btn = appendAssetPickRow(box, preview, { badge });
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       const id = ensureCustomAsset(hit);
       if (!id) {
         toast("Could not add that relic", "error");
         return;
       }
       showView("asset", { coinId: id });
+      const asset = getAsset(id);
+      if (asset?.yahooSymbol && (asset.kind === "stock" || asset.kind === "metal")) {
+        try {
+          const q = await fetchStockQuote(asset.yahooSymbol);
+          if (q) {
+            prices[id] = q;
+            rememberQuotes({ [id]: q });
+            saveMarketSnapshot();
+            render();
+          }
+        } catch {
+          /* last price stays */
+        }
+      }
       refreshAll();
     });
     box.appendChild(btn);
@@ -2661,6 +2825,23 @@ function scheduleAssetSearch(raw) {
 async function runAssetSearch(query) {
   const token = ++assetSearchToken;
   try {
+    const q = query.toLowerCase();
+    const metals = allAssets()
+      .filter((a) => a.kind === "metal")
+      .filter(
+        (a) =>
+          a.name.toLowerCase().includes(q) ||
+          a.symbol.toLowerCase().includes(q) ||
+          q === "oz" ||
+          q.startsWith("ounce")
+      )
+      .map((a) => ({
+        kind: "metal",
+        name: a.name,
+        symbol: a.symbol,
+        yahooSymbol: a.yahooSymbol,
+        existingId: a.id,
+      }));
     const [crypto, stocks] = await Promise.all([
       searchCrypto(query).catch(() => []),
       searchStocks(query).catch(() => []),
@@ -2668,7 +2849,7 @@ async function runAssetSearch(query) {
     if (token !== assetSearchToken) return;
     const seen = new Set();
     const merged = [];
-    for (const hit of [...crypto, ...stocks]) {
+    for (const hit of [...metals, ...crypto, ...stocks]) {
       const key = `${hit.kind}:${hit.geckoId || hit.yahooSymbol}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -3962,6 +4143,8 @@ function startSplash() {
     setTimeout(finish, reduced ? 80 : 600);
   };
 
+  el.addEventListener("click", dismiss);
+
   if (reduced) {
     setTimeout(dismiss, 500);
     return;
@@ -3986,6 +4169,7 @@ function startSplash() {
 // ── Boot ───────────────────────────────────────────────────────────────────
 
 loadMarketSnapshot(); // restore last prices/balances so UI doesn't flash $0
+seedPricesFromAssets();
 wire();
 render();
 startSplash();
