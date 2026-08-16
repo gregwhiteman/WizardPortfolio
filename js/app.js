@@ -113,9 +113,119 @@ const COINS = [
 
 const COIN_BY_ID = Object.fromEntries(COINS.map((c) => [c.id, c]));
 
+function colorFromSymbol(sym) {
+  let h = 0;
+  for (const ch of String(sym || "")) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return `hsl(${h % 360} 46% 40%)`;
+}
+
+function hydrateCustomAsset(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const symbol = String(raw.symbol || "").toUpperCase().slice(0, 12);
+  const kind = raw.kind === "stock" ? "stock" : "crypto";
+  const geckoId = raw.geckoId ? String(raw.geckoId) : null;
+  const yahooSymbol = raw.yahooSymbol ? String(raw.yahooSymbol) : kind === "stock" ? symbol : null;
+  const id =
+    raw.id ||
+    (kind === "stock" ? `eq_${String(yahooSymbol || symbol).toLowerCase()}` : geckoId ? `cg_${geckoId}` : null);
+  if (!id || !symbol) return null;
+  return {
+    kind,
+    id,
+    name: String(raw.name || symbol).slice(0, 80),
+    symbol,
+    geckoId,
+    yahooSymbol,
+    decimals: Number.isFinite(Number(raw.decimals)) ? Number(raw.decimals) : kind === "stock" ? 4 : 8,
+    color: raw.color || colorFromSymbol(symbol),
+    placeholder: "",
+    note: kind === "stock" ? "Equities use manual amounts (no on-chain wallets)." : "Manual amounts only for this relic.",
+    explorer: null,
+    fetchBalance: null,
+  };
+}
+
+function normalizeCustomAssets(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const raw of list) {
+    const asset = hydrateCustomAsset(raw);
+    if (!asset || seen.has(asset.id) || COIN_BY_ID[asset.id]) continue;
+    seen.add(asset.id);
+    out.push({
+      kind: asset.kind,
+      id: asset.id,
+      name: asset.name,
+      symbol: asset.symbol,
+      geckoId: asset.geckoId,
+      yahooSymbol: asset.yahooSymbol,
+      decimals: asset.decimals,
+      color: asset.color,
+    });
+  }
+  return out;
+}
+
+function getCustomAssets() {
+  try {
+    return normalizeCustomAssets(store?.customAssets);
+  } catch {
+    return [];
+  }
+}
+
+function allAssets() {
+  return [...COINS, ...getCustomAssets().map(hydrateCustomAsset).filter(Boolean)];
+}
+
+function getAsset(id) {
+  if (!id) return null;
+  if (COIN_BY_ID[id]) return COIN_BY_ID[id];
+  try {
+    const found = (store?.customAssets || []).find((a) => a.id === id);
+    return found ? hydrateCustomAsset(found) : null;
+  } catch {
+    return null;
+  }
+}
+
+function ensureCustomAsset(result) {
+  const existing = findExistingAsset(result);
+  if (existing) return existing.id;
+  const asset = hydrateCustomAsset({
+    kind: result.kind,
+    name: result.name,
+    symbol: result.symbol,
+    geckoId: result.geckoId,
+    yahooSymbol: result.yahooSymbol,
+    color: colorFromSymbol(result.symbol),
+  });
+  if (!asset) return null;
+  if (!Array.isArray(store.customAssets)) store.customAssets = [];
+  store.customAssets = normalizeCustomAssets([...store.customAssets, asset]);
+  saveStore();
+  return asset.id;
+}
+
+function findExistingAsset(result) {
+  if (result.kind === "crypto" && result.geckoId) {
+    return allAssets().find((a) => a.geckoId === result.geckoId) || null;
+  }
+  if (result.kind === "stock" && result.yahooSymbol) {
+    const y = String(result.yahooSymbol).toUpperCase();
+    return (
+      allAssets().find(
+        (a) => String(a.yahooSymbol || "").toUpperCase() === y || (a.kind === "stock" && a.symbol === y)
+      ) || null
+    );
+  }
+  return null;
+}
+
 // ── App state ──────────────────────────────────────────────────────────────
 
-/** @type {{ version: number, activePortfolioId: string|null, exchangeFeePct: number, lightningPower: number, lightningStrikes: boolean, portfolios: Portfolio[] }} */
+/** @type {{ version: number, activePortfolioId: string|null, exchangeFeePct: number, lightningPower: number, lightningStrikes: boolean, customAssets: object[], portfolios: Portfolio[] }} */
 let store = loadStore();
 
 /** When true, don't overwrite manual price field with live market price. */
@@ -269,7 +379,7 @@ function emptyCoinHolding() {
 
 function emptyHoldings() {
   const h = {};
-  for (const c of COINS) h[c.id] = emptyCoinHolding();
+  for (const c of allAssets()) h[c.id] = emptyCoinHolding();
   return h;
 }
 
@@ -348,10 +458,11 @@ function normalizeCoinHolding(raw) {
 }
 
 function normalizePortfolio(pf) {
-  const holdings = emptyHoldings();
+  const holdings = {};
   const src = pf.holdings || {};
-  for (const c of COINS) {
-    holdings[c.id] = normalizeCoinHolding(src[c.id]);
+  const keys = new Set([...COINS.map((c) => c.id), ...Object.keys(src)]);
+  for (const key of keys) {
+    holdings[key] = normalizeCoinHolding(src[key]);
   }
   return {
     id: pf.id || uid(),
@@ -431,6 +542,7 @@ function defaultStore() {
     exchangeFeePct: 0,
     lightningPower: 40,
     lightningStrikes: true,
+    customAssets: [],
     portfolios: [
       {
         id,
@@ -453,6 +565,7 @@ function loadStore() {
         parsed.exchangeFeePct = normalizeExchangeFeePct(parsed.exchangeFeePct);
         parsed.lightningPower = normalizeLightningPower(parsed.lightningPower);
         parsed.lightningStrikes = parsed.lightningStrikes !== false;
+        parsed.customAssets = normalizeCustomAssets(parsed.customAssets);
         return parsed;
       }
     }
@@ -480,6 +593,7 @@ function loadStore() {
         exchangeFeePct: 0,
         lightningPower: 40,
         lightningStrikes: true,
+        customAssets: [],
         version: 2,
         activePortfolioId: id,
         portfolios: [{ id, name: "Main", createdAt: Date.now(), includeInTotal: true, holdings }],
@@ -608,6 +722,24 @@ async function fetchJson(url, options = {}, timeoutMs = 15000) {
   }
 }
 
+async function fetchJsonCors(url, timeoutMs = 15000) {
+  try {
+    return await fetchJson(url, {}, timeoutMs);
+  } catch {
+    try {
+      return await fetchJson(`https://corsproxy.io/?${encodeURIComponent(url)}`, {}, timeoutMs);
+    } catch {
+      const wrap = await fetchJson(
+        `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+        {},
+        timeoutMs
+      );
+      if (wrap && typeof wrap.contents === "string") return JSON.parse(wrap.contents);
+      return wrap;
+    }
+  }
+}
+
 async function fetchJsonRetry(url, options = {}, attempts = 2) {
   let lastErr;
   for (let i = 0; i < attempts; i++) {
@@ -733,24 +865,59 @@ async function fetchNightBalance(address) {
   return raw / 10 ** decimals;
 }
 
-async function fetchPrices() {
-  const ids = COINS.map((c) => c.geckoId).join(",");
-  const data = await fetchJson(
-    `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`
+async function fetchStockQuote(symbol) {
+  const data = await fetchJsonCors(
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`
   );
+  const meta = data?.chart?.result?.[0]?.meta;
+  const price = Number(meta?.regularMarketPrice);
+  if (!Number.isFinite(price)) return null;
+  const prev = Number(meta?.chartPreviousClose ?? meta?.previousClose);
+  const change24h = Number.isFinite(prev) && prev !== 0 ? ((price - prev) / prev) * 100 : 0;
+  return { usd: price, change24h };
+}
+
+async function fetchPrices() {
+  const assets = allAssets();
+  const cryptos = assets.filter((a) => a.geckoId);
+  const stocks = assets.filter((a) => a.kind === "stock" && a.yahooSymbol);
   const next = { ...prices };
   let any = false;
-  for (const coin of COINS) {
-    const row = data[coin.geckoId];
-    if (row && row.usd != null && Number.isFinite(Number(row.usd))) {
-      next[coin.id] = {
-        usd: Number(row.usd),
-        change24h: Number(row.usd_24h_change) || 0,
-      };
-      any = true;
+
+  if (cryptos.length) {
+    const ids = [...new Set(cryptos.map((c) => c.geckoId))].join(",");
+    const data = await fetchJson(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=usd&include_24hr_change=true`
+    );
+    for (const coin of cryptos) {
+      const row = data[coin.geckoId];
+      if (row && row.usd != null && Number.isFinite(Number(row.usd))) {
+        next[coin.id] = {
+          usd: Number(row.usd),
+          change24h: Number(row.usd_24h_change) || 0,
+        };
+        any = true;
+      }
     }
-    // If this coin is missing from the response, keep previous price
   }
+
+  if (stocks.length) {
+    await runPool(
+      stocks.map((stock) => async () => {
+        try {
+          const q = await fetchStockQuote(stock.yahooSymbol);
+          if (q) {
+            next[stock.id] = q;
+            any = true;
+          }
+        } catch {
+          /* keep last quote */
+        }
+      }),
+      3
+    );
+  }
+
   if (any) prices = next;
 }
 
@@ -772,14 +939,47 @@ function rangeSpanMs(days) {
   return CHART_RANGES[days]?.spanMs ?? 24 * 3600 * 1000;
 }
 
-/** Fetch (or reuse) price series for a coin from CoinGecko for the given days. */
+async function fetchStockChart(symbol, days = "1") {
+  const range = days === "1" || days === 1 ? "1d" : days === "7" ? "5d" : days === "30" ? "1mo" : days === "90" ? "3mo" : "max";
+  const interval = range === "1d" ? "5m" : "1d";
+  const data = await fetchJsonCors(
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&range=${range}`
+  );
+  const result = data?.chart?.result?.[0];
+  const ts = result?.timestamp;
+  const close = result?.indicators?.quote?.[0]?.close;
+  if (!Array.isArray(ts) || !Array.isArray(close)) return [];
+  return ts
+    .map((t, i) => [Number(t) * 1000, Number(close[i])])
+    .filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
+}
+
+/** Fetch (or reuse) price series for a coin from CoinGecko / Yahoo for the given days. */
 async function fetchCoinChart(coinId, days = "1") {
-  const coin = COIN_BY_ID[coinId];
+  const coin = getAsset(coinId);
   if (!coin) return [];
   const key = chartCacheKey(coinId, days);
   const cached = chartCache[key];
   if (cached && Date.now() - cached.fetchedAt < CHART_CACHE_MS && cached.points?.length) {
     return cached.points;
+  }
+
+  if (coin.kind === "stock" && coin.yahooSymbol) {
+    try {
+      const points = await fetchStockChart(coin.yahooSymbol, days);
+      if (points.length) {
+        chartCache[key] = { fetchedAt: Date.now(), points };
+        return points;
+      }
+    } catch (err) {
+      if (cached?.points?.length) return cached.points;
+      throw err;
+    }
+  }
+
+  if (!coin.geckoId) {
+    if (cached?.points?.length) return cached.points;
+    return [];
   }
 
   let lastErr;
@@ -819,7 +1019,7 @@ async function fetchCoinChart(coinId, days = "1") {
  * @returns {Promise<{ series: { t: number, v: number }[], partial: boolean, failed: number }>}
  */
 async function buildPortfolioSeries(holdings, days = "1") {
-  const active = (holdings || []).filter((h) => h.balance > 0 && COIN_BY_ID[h.coinId]);
+  const active = (holdings || []).filter((h) => h.balance > 0 && getAsset(h.coinId));
   if (!active.length) return { series: [], partial: false, failed: 0 };
 
   const seriesByCoin = {};
@@ -1190,7 +1390,7 @@ function portfolioTotals(pf) {
   /** @type {{ coinId: string, balance: number, usd: number, change24h: number, alloc: number }[]} */
   const rows = [];
 
-  for (const coin of COINS) {
+  for (const coin of allAssets()) {
     if (!portfolioHasCoin(pf, coin.id)) continue;
     const info = coinBalanceInPortfolio(pf, coin.id);
     sourceCount += info.sourceCount;
@@ -1279,7 +1479,7 @@ function allPortfoliosCostTotals() {
 
   for (const pf of store.portfolios) {
     if (!isIncludedInTotal(pf)) continue;
-    for (const coin of COINS) {
+    for (const coin of allAssets()) {
       if (!portfolioHasCoin(pf, coin.id)) continue;
       const cb = costBasisInfo(pf, coin.id);
       if (!byCoin[coin.id]) {
@@ -1314,7 +1514,8 @@ function allPortfoliosCostTotals() {
 // ── Refresh ────────────────────────────────────────────────────────────────
 
 async function refreshBalance(pfId, coinId, addr) {
-  const coin = COIN_BY_ID[coinId];
+  const coin = getAsset(coinId);
+  if (!coin?.fetchBalance) return;
   const slot = ensureCacheSlot(pfId, coinId, addr);
   // Keep previous balance visible while refreshing (don't zero out)
   slot.loading = true;
@@ -1375,7 +1576,8 @@ async function refreshAll({ fromPull } = {}) {
 
     const jobs = [];
     for (const pf of store.portfolios) {
-      for (const coin of COINS) {
+      for (const coin of allAssets()) {
+        if (!coin.fetchBalance) continue;
         const holding = getCoinHolding(pf, coin.id);
         for (const addr of holding.addresses) {
           // Mark loading but keep existing balance for display
@@ -1686,7 +1888,7 @@ function renderAllocBar(el, rows) {
     if (r.alloc < 0.5 && rows.length > 1) continue;
     const seg = document.createElement("div");
     seg.className = "alloc-seg";
-    const coin = COIN_BY_ID[r.coinId];
+    const coin = getAsset(r.coinId);
     seg.style.width = `${Math.max(r.alloc, 1)}%`;
     seg.style.background = coin?.color || "#d4af37";
     seg.title = `${coin?.symbol || r.coinId}: ${r.alloc.toFixed(1)}%`;
@@ -1751,7 +1953,7 @@ function render() {
   } else if (nav.view === "asset") {
     if (brand) brand.hidden = true;
     title.hidden = false;
-    title.textContent = COIN_BY_ID[nav.coinId]?.symbol || "Asset";
+    title.textContent = getAsset(nav.coinId)?.symbol || "Asset";
     renderAsset();
   } else if (nav.view === "add-coin") {
     if (brand) brand.hidden = true;
@@ -1786,7 +1988,7 @@ function renderHome() {
   empty.hidden = true;
 
   for (const r of rows) {
-    const coin = COIN_BY_ID[r.coinId];
+    const coin = getAsset(r.coinId);
     if (!coin) continue;
     const px = prices[coin.id]?.usd;
     const ch = prices[coin.id]?.change24h;
@@ -1880,7 +2082,7 @@ function renderHomePl() {
   empty.hidden = true;
 
   for (const r of rows) {
-    const coin = COIN_BY_ID[r.coinId];
+    const coin = getAsset(r.coinId);
     if (!coin) continue;
     const plCls = r.pl == null ? "neutral" : r.pl > 0 ? "up" : r.pl < 0 ? "down" : "neutral";
     const plSign = r.pl != null && r.pl > 0 ? "+" : "";
@@ -2007,7 +2209,7 @@ function renderPortfolio() {
   const empty = document.getElementById("pf-empty");
   list.innerHTML = "";
 
-  const coinsTracked = COINS.filter((c) => portfolioHasCoin(pf, c.id));
+  const coinsTracked = allAssets().filter((c) => portfolioHasCoin(pf, c.id));
 
   if (!coinsTracked.length) {
     empty.hidden = false;
@@ -2076,7 +2278,7 @@ function renderPortfolio() {
 
 function renderAsset() {
   const pf = getPortfolio(nav.portfolioId);
-  const coin = COIN_BY_ID[nav.coinId];
+  const coin = getAsset(nav.coinId);
   if (!pf || !coin) {
     showView("home");
     return;
@@ -2147,8 +2349,12 @@ function renderAsset() {
     costInput.value = cb.cost > 0 ? String(roundPriceInput(cb.cost)) : "";
   }
 
-  document.getElementById("address-input").placeholder = coin.placeholder;
-  document.getElementById("address-hint").textContent = coin.note;
+  const wallets = document.getElementById("asset-wallets");
+  if (wallets) wallets.hidden = !coin.fetchBalance;
+  if (coin.fetchBalance) {
+    document.getElementById("address-input").placeholder = coin.placeholder || "Paste wallet address";
+    document.getElementById("address-hint").textContent = coin.note || "";
+  }
   document.getElementById("manual-amount-input").placeholder = `Amount in ${coin.symbol}`;
 
   // Price paid: default to live market price (editable). Don't overwrite user edits.
@@ -2262,23 +2468,134 @@ function renderAsset() {
   }
 }
 
+function appendAssetPickRow(list, coin, { badge } = {}) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "coin-pick-row";
+  const extra = badge ? `<span class="asset-badge">${escapeHtml(badge)}</span>` : "";
+  btn.innerHTML = `
+    ${coinAvatarHtml(coin)}
+    <div class="grow">
+      <div class="name">${escapeHtml(coin.name)}</div>
+      <div class="sym">${escapeHtml(coin.symbol)}${extra}</div>
+    </div>
+    <span class="chev">›</span>
+  `;
+  return btn;
+}
+
 function renderAddCoin() {
   const list = document.getElementById("coin-pick-list");
+  if (!list) return;
   list.innerHTML = "";
-  for (const coin of COINS) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "coin-pick-row";
-    btn.innerHTML = `
-      ${coinAvatarHtml(coin)}
-      <div class="grow">
-        <div class="name">${escapeHtml(coin.name)}</div>
-        <div class="sym">${coin.symbol}</div>
-      </div>
-      <span class="chev">›</span>
-    `;
+  for (const coin of allAssets()) {
+    const badge = coin.fetchBalance ? null : coin.kind === "stock" ? "Stock" : "Coin";
+    const btn = appendAssetPickRow(list, coin, { badge: COIN_BY_ID[coin.id] ? null : badge });
     btn.addEventListener("click", () => showView("asset", { coinId: coin.id }));
     list.appendChild(btn);
+  }
+}
+
+async function searchCrypto(query) {
+  const data = await fetchJson(
+    `https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(query)}`
+  );
+  return (data.coins || []).slice(0, 8).map((c) => ({
+    kind: "crypto",
+    geckoId: c.id,
+    name: c.name,
+    symbol: String(c.symbol || "").toUpperCase(),
+    thumb: c.thumb,
+  }));
+}
+
+async function searchStocks(query) {
+  const data = await fetchJsonCors(
+    `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0`
+  );
+  const allowed = new Set(["EQUITY", "ETF", "INDEX", "MUTUALFUND"]);
+  return (data.quotes || [])
+    .filter((x) => x.symbol && (!x.quoteType || allowed.has(x.quoteType)))
+    .slice(0, 8)
+    .map((x) => ({
+      kind: "stock",
+      yahooSymbol: x.symbol,
+      name: x.shortname || x.longname || x.symbol,
+      symbol: String(x.symbol || "").toUpperCase(),
+      exch: x.exchDisp || x.exchange || "",
+    }));
+}
+
+function renderSearchResults(results, query) {
+  const box = document.getElementById("asset-search-results");
+  const status = document.getElementById("asset-search-status");
+  if (!box) return;
+  box.innerHTML = "";
+  if (!results.length) {
+    if (status) status.textContent = query ? `No relics match “${query}”.` : "";
+    return;
+  }
+  if (status) status.textContent = `${results.length} result${results.length === 1 ? "" : "s"}`;
+  for (const hit of results) {
+    const preview = {
+      id: hit.geckoId || hit.yahooSymbol,
+      name: hit.name,
+      symbol: hit.symbol,
+      color: colorFromSymbol(hit.symbol),
+    };
+    const badge = hit.kind === "stock" ? `Stock${hit.exch ? ` · ${hit.exch}` : ""}` : "Coin";
+    const btn = appendAssetPickRow(box, preview, { badge });
+    btn.addEventListener("click", () => {
+      const id = ensureCustomAsset(hit);
+      if (!id) {
+        toast("Could not add that relic", "error");
+        return;
+      }
+      showView("asset", { coinId: id });
+      refreshAll();
+    });
+    box.appendChild(btn);
+  }
+}
+
+let assetSearchTimer = 0;
+let assetSearchToken = 0;
+
+function scheduleAssetSearch(raw) {
+  const query = String(raw || "").trim();
+  const status = document.getElementById("asset-search-status");
+  const box = document.getElementById("asset-search-results");
+  clearTimeout(assetSearchTimer);
+  if (query.length < 1) {
+    if (box) box.innerHTML = "";
+    if (status) status.textContent = "";
+    return;
+  }
+  if (status) status.textContent = "Scrying the markets…";
+  assetSearchTimer = setTimeout(() => runAssetSearch(query), 320);
+}
+
+async function runAssetSearch(query) {
+  const token = ++assetSearchToken;
+  try {
+    const [crypto, stocks] = await Promise.all([
+      searchCrypto(query).catch(() => []),
+      searchStocks(query).catch(() => []),
+    ]);
+    if (token !== assetSearchToken) return;
+    const seen = new Set();
+    const merged = [];
+    for (const hit of [...crypto, ...stocks]) {
+      const key = `${hit.kind}:${hit.geckoId || hit.yahooSymbol}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(hit);
+    }
+    renderSearchResults(merged, query);
+  } catch (err) {
+    if (token !== assetSearchToken) return;
+    const status = document.getElementById("asset-search-status");
+    if (status) status.textContent = humanizeError(err);
   }
 }
 
@@ -2402,8 +2719,12 @@ function looksPlausible(coinId, address) {
 
 async function addAddressToCurrent(address) {
   const pf = getPortfolio(nav.portfolioId);
-  const coin = COIN_BY_ID[nav.coinId];
+  const coin = getAsset(nav.coinId);
   if (!pf || !coin) return;
+  if (!coin.fetchBalance) {
+    toast("This relic uses manual amounts only", "error");
+    return;
+  }
 
   const addr = address.trim();
   if (!addr) return;
@@ -2465,7 +2786,7 @@ function updateManualFeeHint() {
  */
 function addManualToCurrent(amountRaw, priceRaw, feeRaw, labelRaw) {
   const pf = getPortfolio(nav.portfolioId);
-  const coin = COIN_BY_ID[nav.coinId];
+  const coin = getAsset(nav.coinId);
   if (!pf || !coin) return;
 
   const cleaned = String(amountRaw || "").replace(/,/g, "").trim();
@@ -2549,6 +2870,9 @@ function importData(file) {
           data.lightningPower != null ? data.lightningPower : getLightningPower()
         ),
         lightningStrikes: data.lightningStrikes != null ? !!data.lightningStrikes : getLightningStrikes(),
+        customAssets: normalizeCustomAssets(
+          data.customAssets != null ? data.customAssets : store.customAssets
+        ),
         portfolios: data.portfolios.map(normalizePortfolio),
       };
       if (!store.portfolios.length) store = defaultStore();
@@ -3367,6 +3691,16 @@ function wire() {
   document.getElementById("btn-rename-portfolio").addEventListener("click", () => openPortfolioModal("rename"));
   document.getElementById("btn-delete-portfolio").addEventListener("click", () => deleteCurrentPortfolio());
   document.getElementById("btn-add-holding").addEventListener("click", () => showView("add-coin"));
+  document.getElementById("asset-search")?.addEventListener("input", (e) => {
+    scheduleAssetSearch(e.target.value);
+  });
+  document.getElementById("asset-search")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const first = document.querySelector("#asset-search-results .coin-pick-row");
+      if (first) first.click();
+    }
+  });
 
   document.getElementById("modal-portfolio-cancel").addEventListener("click", closePortfolioModal);
   document.getElementById("modal-portfolio-save").addEventListener("click", savePortfolioModal);
@@ -3412,7 +3746,7 @@ function wire() {
 
   document.getElementById("btn-save-avg-buy").addEventListener("click", () => {
     const pf = getPortfolio(nav.portfolioId);
-    const coin = COIN_BY_ID[nav.coinId];
+    const coin = getAsset(nav.coinId);
     if (!pf || !coin) return;
     if (setAvgBuyPrice(pf, coin.id, document.getElementById("avg-buy-input").value)) {
       render();
@@ -3423,7 +3757,7 @@ function wire() {
 
   document.getElementById("btn-save-cost-basis").addEventListener("click", () => {
     const pf = getPortfolio(nav.portfolioId);
-    const coin = COIN_BY_ID[nav.coinId];
+    const coin = getAsset(nav.coinId);
     if (!pf || !coin) return;
     if (setCostBasisUsd(pf, coin.id, document.getElementById("cost-basis-input").value)) {
       render();
@@ -3435,7 +3769,7 @@ function wire() {
 
   document.getElementById("btn-clear-cost").addEventListener("click", () => {
     const pf = getPortfolio(nav.portfolioId);
-    const coin = COIN_BY_ID[nav.coinId];
+    const coin = getAsset(nav.coinId);
     if (!pf || !coin) return;
     if (!confirm("Clear cost basis and average buy price for this coin?")) return;
     clearCostBasis(pf, coin.id);

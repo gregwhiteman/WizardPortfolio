@@ -341,31 +341,48 @@
         </div>
 
         <!-- Wallet addresses -->
-        <div class="section-head spaced">
-          <h2>Wallet addresses</h2>
-        </div>
-        <p class="section-sub">Live on-chain balances. Combined with manual amounts above.</p>
-        <div class="address-list" id="asset-address-list"></div>
+        <div id="asset-wallets">
+          <div class="section-head spaced">
+            <h2>Wallet addresses</h2>
+          </div>
+          <p class="section-sub">Live on-chain balances. Combined with manual amounts above.</p>
+          <div class="address-list" id="asset-address-list"></div>
 
-        <form class="add-form card-form" id="add-address-form" autocomplete="off">
-          <label class="field-label" for="address-input">Address</label>
-          <input
-            id="address-input"
-            class="field-input"
-            type="text"
-            spellcheck="false"
-            autocapitalize="off"
-            autocomplete="off"
-            placeholder="Paste wallet address"
-          />
-          <p class="field-hint" id="address-hint"></p>
-          <button type="submit" class="btn-secondary full">Add address</button>
-        </form>
+          <form class="add-form card-form" id="add-address-form" autocomplete="off">
+            <label class="field-label" for="address-input">Address</label>
+            <input
+              id="address-input"
+              class="field-input"
+              type="text"
+              spellcheck="false"
+              autocapitalize="off"
+              autocomplete="off"
+              placeholder="Paste wallet address"
+            />
+            <p class="field-hint" id="address-hint"></p>
+            <button type="submit" class="btn-secondary full">Add address</button>
+          </form>
+        </div>
       </section>
 
-      <!-- ADD HOLDING: pick a coin -->
+      <!-- ADD HOLDING: pick a coin or stock -->
       <section class="view" id="view-add-coin" data-view="add-coin">
-        <p class="page-desc">Choose a coin, then inscribe a manual amount and/or bind a wallet address. Both count toward your hoard.</p>
+        <p class="page-desc">Search any stock ticker or coin — AAPL, ETH, SOL — then inscribe a manual amount. Built-in chains can also bind a wallet.</p>
+        <label class="field-label" for="asset-search">Scry a ticker</label>
+        <input
+          id="asset-search"
+          class="field-input"
+          type="search"
+          autocomplete="off"
+          spellcheck="false"
+          autocapitalize="off"
+          placeholder="AAPL, TSLA, ETH, SOL…"
+        />
+        <p class="field-hint" id="asset-search-status"></p>
+        <div class="coin-pick-list" id="asset-search-results"></div>
+        <div class="section-head spaced">
+          <h2>Familiar relics</h2>
+        </div>
         <div class="coin-pick-list" id="coin-pick-list"></div>
       </section>
 
@@ -436,7 +453,7 @@
         <div class="settings-group">
           <h2>Lore</h2>
           <p class="page-desc">
-            Wizard Portfolio tracks BTC, XRP, XLM, HBAR, ADA, Midnight (NIGHT), DOGE, and LTC via public blockchain APIs and CoinGecko prices.
+            Wizard Portfolio tracks any stock or crypto you add by ticker, plus live wallets for BTC, XRP, XLM, HBAR, ADA, Midnight (NIGHT), DOGE, and LTC. Prices from CoinGecko and Yahoo Finance.
             Not financial advice — just a ledger for your hoard.
           </p>
         </div>

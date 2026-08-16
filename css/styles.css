@@ -1327,6 +1327,17 @@ button.holding-row:active {
   font-size: 1.1rem;
 }
 
+.asset-badge {
+  display: inline-block;
+  margin-left: 8px;
+  font-family: var(--display);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  vertical-align: middle;
+}
+
 /* ── Forms & buttons ── */
 .add-form,
 .settings-group {
