@@ -107,12 +107,19 @@
                   muted
                   loop
                   playsinline
-                  preload="metadata"
-                  src="assets/goldenSplash.mov"
+                  preload="none"
+                  hidden
                   aria-label="The wizard"
                 ></video>
+                <img
+                  class="wizard-film-img"
+                  id="wizard-film-img"
+                  src="assets/images/19.PNG"
+                  alt="The wizard"
+                />
                 <div class="wizard-film-frame" aria-hidden="true"></div>
               </div>
+              <div class="wizard-pair" id="wizard-pair" aria-label="Power and Shield">0 / 10</div>
               <div class="wizard-hud" aria-label="Wizard vitals">
                 <div class="hud-bar hud-shield">
                   <div class="hud-bar-head">
@@ -164,7 +171,7 @@
                     <tr>
                       <th>Ticker</th>
                       <th>Price</th>
-                      <th>Allocation</th>
+                      <th>Alloc</th>
                       <th>Risk</th>
                       <th>Gain/Loss</th>
                       <th>Total</th>
@@ -207,10 +214,10 @@
               <div class="section-head">
                 <h2>Treasures</h2>
               </div>
-              <div class="holdings-header">
-                <span>Relic</span>
-                <span class="right">Price / 24h</span>
-                <span class="right">Hoard</span>
+              <div class="holdings-header" id="home-holdings-header">
+                <button type="button" class="holdings-sort" data-sort-list="hoard" data-sort-key="relic">Relic</button>
+                <button type="button" class="holdings-sort right" data-sort-list="hoard" data-sort-key="price">Price / 24h</button>
+                <button type="button" class="holdings-sort right is-on" data-sort-list="hoard" data-sort-key="value" aria-sort="descending">Hoard</button>
               </div>
               <div class="holdings-list" id="home-holdings-list"></div>
               <p class="empty-hint" id="home-empty" hidden>
@@ -251,10 +258,10 @@
               <div class="section-head">
                 <h2>Treasures</h2>
               </div>
-              <div class="holdings-header">
-                <span>Relic</span>
-                <span class="right">Avg / cost</span>
-                <span class="right">Fortune</span>
+              <div class="holdings-header" id="home-pl-header">
+                <button type="button" class="holdings-sort" data-sort-list="pl" data-sort-key="relic">Relic</button>
+                <button type="button" class="holdings-sort right" data-sort-list="pl" data-sort-key="cost">Avg / cost</button>
+                <button type="button" class="holdings-sort right is-on" data-sort-list="pl" data-sort-key="pl" aria-sort="descending">Fortune</button>
               </div>
               <div class="holdings-list" id="home-pl-list"></div>
               <p class="empty-hint" id="home-pl-empty" hidden>

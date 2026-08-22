@@ -475,7 +475,7 @@ button {
   overflow: hidden;
   width: min(176px, 46%);
   margin: 0 auto;
-  aspect-ratio: 464 / 688;
+  aspect-ratio: 2 / 3;
   border: 3px solid var(--frame);
   border-radius: 18px;
   background: #0a101c;
@@ -502,12 +502,21 @@ button {
   --frame-shift: -37deg;
 }
 
-.wizard-film {
+.wizard-film,
+.wizard-film-img {
   display: block;
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
+  object-position: center 42%;
   pointer-events: none;
+}
+
+.wizard-film[hidden],
+.wizard-film-img[hidden] {
+  display: none !important;
 }
 
 .wizard-film-frame {
@@ -522,6 +531,17 @@ button {
   border-image-width: 26px;
   border-image-repeat: stretch;
   filter: hue-rotate(var(--frame-shift)) drop-shadow(0 0 4px var(--frame-glow));
+}
+
+.wizard-pair {
+  margin: 10px 0 0;
+  text-align: center;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
 }
 
 .wizard-hud {
@@ -1322,6 +1342,35 @@ button {
 
 .holdings-header .right {
   text-align: right;
+}
+
+.holdings-sort {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  font-weight: inherit;
+  text-align: left;
+  padding: 4px 0;
+  border-radius: 4px;
+}
+
+.holdings-sort.right {
+  text-align: right;
+}
+
+.holdings-sort.is-on {
+  color: var(--accent);
+}
+
+.holdings-sort.is-on[aria-sort="ascending"]::after {
+  content: " ▲";
+  font-size: 0.72em;
+}
+
+.holdings-sort.is-on[aria-sort="descending"]::after {
+  content: " ▼";
+  font-size: 0.72em;
 }
 
 .holdings-list {

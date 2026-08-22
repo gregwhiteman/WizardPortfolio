@@ -377,6 +377,9 @@ const HOME_SLIDE_PL = 2;
 const HOME_SLIDE_MAX = 2;
 let homeSlide = HOME_SLIDE_HOARD;
 
+const hoardSort = { key: "value", dir: "desc" };
+const plSort = { key: "pl", dir: "desc" };
+
 /**
  * Load last-known prices + on-chain balances so the UI never flashes $0 on refresh.
  */
@@ -2515,6 +2518,72 @@ function renderTvChart() {
   }
 }
 
+function cmpSortVal(a, b, dir) {
+  const aN = a == null || a === "" || (typeof a === "number" && Number.isNaN(a));
+  const bN = b == null || b === "" || (typeof b === "number" && Number.isNaN(b));
+  if (aN && bN) return 0;
+  if (aN) return 1;
+  if (bN) return -1;
+  const m = dir === "asc" ? 1 : -1;
+  if (typeof a === "string" || typeof b === "string") {
+    return String(a).localeCompare(String(b), undefined, { sensitivity: "base" }) * m;
+  }
+  return (a - b) * m;
+}
+
+function sortRows(rows, key, dir, getter) {
+  return [...rows].sort((a, b) => cmpSortVal(getter(a, key), getter(b, key), dir));
+}
+
+function paintSortHeader(headerId, state) {
+  const root = document.getElementById(headerId);
+  if (!root) return;
+  root.querySelectorAll(".holdings-sort").forEach((btn) => {
+    const on = btn.dataset.sortKey === state.key;
+    btn.classList.toggle("is-on", on);
+    if (on) btn.setAttribute("aria-sort", state.dir === "asc" ? "ascending" : "descending");
+    else btn.removeAttribute("aria-sort");
+  });
+}
+
+function hoardSortValue(r, key) {
+  const coin = getAsset(r.coinId);
+  if (key === "relic") return displayName(coin) || coin?.symbol || r.coinId;
+  if (key === "price") return getQuote(r.coinId)?.usd ?? null;
+  if (key === "change") return getQuote(r.coinId)?.change24h ?? null;
+  return r.usd;
+}
+
+function plSortValue(r, key) {
+  const coin = getAsset(r.coinId);
+  if (key === "relic") return displayName(coin) || coin?.symbol || r.coinId;
+  if (key === "cost") return r.cost > 0 ? r.cost : null;
+  return r.pl;
+}
+
+function cycleSort(state, key) {
+  if (state.key === key) state.dir = state.dir === "desc" ? "asc" : "desc";
+  else {
+    state.key = key;
+    state.dir = key === "relic" ? "asc" : "desc";
+  }
+}
+
+function wireHoldingsSort() {
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest(".holdings-sort");
+    if (!btn) return;
+    const list = btn.dataset.sortList;
+    const key = btn.dataset.sortKey;
+    if (!list || !key) return;
+    if (list === "hoard") cycleSort(hoardSort, key);
+    else if (list === "pl") cycleSort(plSort, key);
+    else return;
+    if (list === "hoard") renderHome();
+    else renderHomePl();
+  });
+}
+
 /** Dashboard: aggregated coin holdings from portfolios included in the total. */
 function renderHome() {
   const { totalUsd, changeUsd, changePct, allocRows } = allPortfoliosTotals();
@@ -2527,7 +2596,13 @@ function renderHome() {
   const empty = document.getElementById("home-empty");
   list.innerHTML = "";
 
-  const rows = (allocRows || []).filter((r) => r.balance > 0 || r.usd > 0);
+  const rows = sortRows(
+    (allocRows || []).filter((r) => r.balance > 0 || r.usd > 0),
+    hoardSort.key,
+    hoardSort.dir,
+    hoardSortValue
+  );
+  paintSortHeader("home-holdings-header", hoardSort);
   if (!rows.length) {
     empty.hidden = false;
     renderWizardHud();
@@ -2582,12 +2657,84 @@ function renderHome() {
 }
 
 /** Placeholder vitals until the shield / power / health formulas land. */
-function setHudBar(fillId, pctId, value) {
-  const n = Math.max(0, Math.min(100, Number(value) || 0));
+function setHudBar(fillId, pctId, value, digits = 0) {
+  const raw = Number(value);
+  const n = Number.isFinite(raw) ? raw : 0;
+  const shown = Math.max(0, Math.min(100, n));
   const fill = document.getElementById(fillId);
   const label = document.getElementById(pctId);
-  if (fill) fill.style.width = `${n}%`;
-  if (label) label.textContent = `${Math.round(n)}%`;
+  if (fill) fill.style.width = `${shown}%`;
+  if (label) label.textContent = `${n.toFixed(digits)}%`;
+}
+
+/** Combat stats from the original Wizard Portfolio formulas. */
+function wizardCombatStats() {
+  const { allocRows } = allPortfoliosTotals();
+  const { rows: plRows } = allPortfoliosCostTotals();
+  const plById = Object.fromEntries((plRows || []).map((r) => [r.coinId, r]));
+  const rows = (allocRows || []).filter((r) => r.balance > 0 || r.usd > 0);
+  const totalUsd = rows.reduce((s, r) => s + (Number(r.usd) || 0), 0);
+
+  if (!rows.length || !(totalUsd > 0)) {
+    return { attach: 0, shield: 10, power: 0, health: 75, todayChange: 0, totalGainLoss: 0, attachRaw: 0 };
+  }
+
+  let attachRaw = 0;
+  let todayChange = 0;
+  let totalGainLoss = 0;
+
+  for (const r of rows) {
+    const coin = getAsset(r.coinId);
+    if (!coin) continue;
+    const allocFrac = r.usd / totalUsd;
+    const rated = getAssetRisk(coin.id);
+    const risk = rated != null ? rated : 5;
+    attachRaw += allocFrac * risk;
+
+    const ch = getQuote(coin.id)?.change24h;
+    if (Number.isFinite(ch) && coin.kind !== "cash" && coin.id !== "cash") {
+      todayChange += allocFrac * ch;
+    }
+
+    const plPct = plById[coin.id]?.plPct;
+    if (Number.isFinite(plPct)) totalGainLoss += allocFrac * plPct;
+  }
+
+  const attach = Math.max(0, Math.min(9, Math.floor(attachRaw)));
+  return {
+    attach,
+    shield: 10 - attach,
+    power: attachRaw / 9,
+    health: totalGainLoss + 75,
+    todayChange,
+    totalGainLoss,
+    attachRaw,
+  };
+}
+
+function wizardCharacterCode(stats) {
+  if (!stats || stats.attach < 1) return "19";
+  const attach = Math.max(1, Math.min(9, stats.attach));
+  const shield = 10 - attach;
+  let code = `${attach}${shield}`;
+  if (stats.todayChange > 0) code += "G";
+  else if (stats.todayChange < -1) code += "R";
+  if (stats.health <= 0) code += "D";
+  return code;
+}
+
+function wizardStemFromCode(code) {
+  const m = String(code || "19").match(/^(\d{2})(GD|RD|G|R|D)?$/);
+  if (!m) return "19";
+  const extra = { G: "_GREEN", R: "_RED", D: "_DOWN", GD: "_GREEN_DOWN", RD: "_RED_DOWN" }[m[2] || ""] || "";
+  return m[1] + extra;
+}
+
+function wizardToneFromCode(code) {
+  const s = String(code || "");
+  if (s.includes("G")) return "up";
+  if (s.includes("R")) return "down";
+  return "gold";
 }
 
 function setLedgerCell(id, text, cls) {
@@ -2599,11 +2746,13 @@ function setLedgerCell(id, text, cls) {
 }
 
 function renderWizardHud() {
-  // Placeholder values — calculations will replace these.
-  setHudBar("wizard-shield-fill", "wizard-shield-pct", 0);
-  setHudBar("wizard-power-fill", "wizard-power-pct", 0);
-  setHudBar("wizard-health-fill", "wizard-health-pct", 0);
-  updateWizardFilmClip();
+  const combat = wizardCombatStats();
+  setHudBar("wizard-shield-fill", "wizard-shield-pct", (combat.shield / 10) * 100, 0);
+  setHudBar("wizard-power-fill", "wizard-power-pct", combat.power * 100, 1);
+  setHudBar("wizard-health-fill", "wizard-health-pct", combat.health, 1);
+  const pair = document.getElementById("wizard-pair");
+  if (pair) pair.textContent = `${combat.attach} / ${combat.shield}`;
+  updateWizardFilmClip(combat);
 
   const { changeUsd, changePct, allocRows } = allPortfoliosTotals();
   const cost = allPortfoliosCostTotals();
@@ -2717,13 +2866,16 @@ function renderHomePl() {
   if (!list || !empty) return;
   list.innerHTML = "";
 
-  if (!rows.length) {
+  const sorted = sortRows(rows, plSort.key, plSort.dir, plSortValue);
+  paintSortHeader("home-pl-header", plSort);
+
+  if (!sorted.length) {
     empty.hidden = false;
     return;
   }
   empty.hidden = true;
 
-  for (const r of rows) {
+  for (const r of sorted) {
     const coin = getAsset(r.coinId);
     if (!coin) continue;
     const plCls = r.pl == null ? "neutral" : r.pl > 0 ? "up" : r.pl < 0 ? "down" : "neutral";
@@ -3649,43 +3801,101 @@ function wipeAll() {
 
 // ── Event wiring ───────────────────────────────────────────────────────────
 
-function wizardDayTone() {
-  const { changeUsd, totalUsd } = allPortfoliosTotals();
-  if (!(totalUsd > 0) || changeUsd == null || Number.isNaN(changeUsd) || changeUsd === 0) return "gold";
-  return changeUsd > 0 ? "up" : "down";
+const WIZARD_VIDEOS = new Set([
+  "37",
+  "37_DOWN",
+  "37_GREEN",
+  "37_GREEN_DOWN",
+  "37_RED",
+  "55",
+  "55_GREEN",
+  "64",
+  "64_GREEN",
+  "64_RED",
+]);
+
+function wizardPaneOpen() {
+  return nav.view === "home" && homeSlide === HOME_SLIDE_WIZARD;
 }
 
-function updateWizardFilmClip() {
+function showWizardStill(src) {
   const film = document.getElementById("wizard-film");
-  const card = document.getElementById("wizard-film-card");
-  const src = splashVideoSrc();
-  const tone = wizardDayTone();
-  if (card) {
-    card.classList.remove("tone-gold", "tone-up", "tone-down");
-    card.classList.add(`tone-${tone}`);
+  const img = document.getElementById("wizard-film-img");
+  if (film) {
+    film.pause();
+    film.hidden = true;
+    if (film.src) {
+      film.removeAttribute("src");
+      film.load();
+    }
+    film.dataset.clip = "";
   }
+  if (img) {
+    img.hidden = false;
+    if (img.dataset.clip !== src) {
+      img.dataset.clip = src;
+      img.src = src;
+    }
+  }
+}
+
+function showWizardVideo(src) {
+  const film = document.getElementById("wizard-film");
+  const img = document.getElementById("wizard-film-img");
+  if (img) img.hidden = true;
   if (!film) return;
-  const current = film.dataset.clip || film.getAttribute("src") || "";
-  if (current !== src) {
+  film.hidden = false;
+  if (film.dataset.clip !== src) {
     film.dataset.clip = src;
     film.src = src;
-  } else {
-    film.dataset.clip = src;
   }
-}
-
-function syncWizardFilm() {
-  const film = document.getElementById("wizard-film");
-  if (!film) return;
-  updateWizardFilmClip();
-  const show = nav.view === "home" && homeSlide === HOME_SLIDE_WIZARD;
-  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (show && !reduced) {
+  if (wizardPaneOpen() && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     const play = film.play();
     if (play && typeof play.catch === "function") play.catch(() => {});
   } else {
     film.pause();
   }
+}
+
+function updateWizardFilmClip(combat) {
+  const card = document.getElementById("wizard-film-card");
+  const film = document.getElementById("wizard-film");
+  if (!wizardPaneOpen()) {
+    film?.pause();
+    return;
+  }
+
+  const stats = combat || wizardCombatStats();
+  const code = wizardCharacterCode(stats);
+  const stem = wizardStemFromCode(code);
+  const tone = wizardToneFromCode(code);
+  if (card) {
+    card.classList.remove("tone-gold", "tone-up", "tone-down");
+    card.classList.add(`tone-${tone}`);
+  }
+
+  if (card?.dataset.wizardCode === code) {
+    if (film && !film.hidden && film.dataset.clip) showWizardVideo(film.dataset.clip);
+    return;
+  }
+  if (card) card.dataset.wizardCode = code;
+
+  const png = `assets/images/${stem}.PNG`;
+  if (WIZARD_VIDEOS.has(stem)) {
+    showWizardVideo(`assets/images/${stem}.mp4`);
+    if (film) {
+      film.onerror = () => {
+        film.onerror = null;
+        showWizardStill(png);
+      };
+    }
+  } else {
+    showWizardStill(png);
+  }
+}
+
+function syncWizardFilm() {
+  updateWizardFilmClip();
 }
 
 function syncHomePager(animate) {
@@ -4457,6 +4667,7 @@ function wire() {
   wirePullToRefresh();
   wireHomePager();
   wireKirlian();
+  wireHoldingsSort();
 
   document.getElementById("home-chart-retry")?.addEventListener("click", () => {
     // Bust cache for current range so retry actually refetches
