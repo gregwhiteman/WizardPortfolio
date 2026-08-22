@@ -18,7 +18,6 @@
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
   <link rel="icon" type="image/png" sizes="48x48" href="favicon-48.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" sizes="180x180" />
-  <link rel="manifest" href="manifest.json" />
 </head>
 <body>
   <div id="app" class="app">
@@ -48,11 +47,15 @@
         <!-- Same slot: Codex on the hall, Back on other pages -->
         <button type="button" class="icon-btn" id="btn-settings" aria-label="Open the Codex">
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M5 5.5c1.6-.9 3.5-1.3 7-1.3s5.4.4 7 1.3V19c-1.6-.8-3.5-1.2-7-1.2S6.6 18.2 5 19V5.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
-            <path d="M12 4.2v13.6" stroke="currentColor" stroke-width="1.7"/>
+            <path d="M5 5.5c1.6-.9 3.5-1.3 7-1.3s5.4.4 7 1.3V19c-1.6-.8-3.5-1.2-7-1.2S6.6 18.2 5 19V5.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M12 4.2v13.6" stroke="currentColor" stroke-width="2"/>
           </svg>
         </button>
-        <button type="button" class="icon-btn" id="btn-back" hidden aria-label="Back">‹</button>
+        <button type="button" class="icon-btn" id="btn-back" hidden aria-label="Back">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M15 5 8 12l7 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
       </div>
       <div class="topbar-title-wrap">
         <div class="brand" id="topbar-brand">
@@ -96,7 +99,88 @@
       <section class="view view-active view-home" id="view-home" data-view="home">
         <div class="home-pager" id="home-pager">
           <div class="home-track" id="home-track">
-            <div class="home-pane" id="home-pane-market" data-home-slide="0">
+            <div class="home-pane" id="home-pane-wizard" data-home-slide="0">
+              <div class="wizard-film-card tone-gold" id="wizard-film-card">
+                <video
+                  class="wizard-film"
+                  id="wizard-film"
+                  muted
+                  loop
+                  playsinline
+                  preload="metadata"
+                  src="assets/goldenSplash.mov"
+                  aria-label="The wizard"
+                ></video>
+                <div class="wizard-film-frame" aria-hidden="true"></div>
+              </div>
+              <div class="wizard-hud" aria-label="Wizard vitals">
+                <div class="hud-bar hud-shield">
+                  <div class="hud-bar-head">
+                    <span class="hud-bar-label">Shield</span>
+                    <span class="hud-bar-pct" id="wizard-shield-pct">0%</span>
+                  </div>
+                  <div class="hud-bar-track" aria-hidden="true">
+                    <div class="hud-bar-fill" id="wizard-shield-fill" style="width: 0%"></div>
+                  </div>
+                </div>
+                <div class="hud-bar hud-power">
+                  <div class="hud-bar-head">
+                    <span class="hud-bar-label">Power</span>
+                    <span class="hud-bar-pct" id="wizard-power-pct">0%</span>
+                  </div>
+                  <div class="hud-bar-track" aria-hidden="true">
+                    <div class="hud-bar-fill" id="wizard-power-fill" style="width: 0%"></div>
+                  </div>
+                </div>
+                <div class="hud-bar hud-health">
+                  <div class="hud-bar-head">
+                    <span class="hud-bar-label">Health</span>
+                    <span class="hud-bar-pct" id="wizard-health-pct">0%</span>
+                  </div>
+                  <div class="hud-bar-track" aria-hidden="true">
+                    <div class="hud-bar-fill" id="wizard-health-fill" style="width: 0%"></div>
+                  </div>
+                </div>
+              </div>
+              <table class="wizard-ledger">
+                <tbody>
+                  <tr>
+                    <th scope="row">Today's Change</th>
+                    <td id="wizard-today-pct">—</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Today's Gain/Loss</th>
+                    <td id="wizard-today-usd">—</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Total Gain/Loss</th>
+                    <td id="wizard-total-pct">—</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="wizard-holdings-wrap">
+                <table class="wizard-holdings">
+                  <thead>
+                    <tr>
+                      <th>Ticker</th>
+                      <th>Price</th>
+                      <th>Allocation</th>
+                      <th>Risk</th>
+                      <th>Gain/Loss</th>
+                      <th>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody id="wizard-holdings-body"></tbody>
+                </table>
+              </div>
+              <div class="home-dots" role="tablist" aria-label="Hoard pages">
+                <button type="button" class="home-dot" data-home-slide="0" aria-label="The wizard" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="1" aria-label="The hoard" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="2" aria-label="The reckoning" aria-selected="false"></button>
+              </div>
+            </div>
+
+            <div class="home-pane" id="home-pane-market" data-home-slide="1">
               <div class="summary-card">
                 <div class="summary-label">The hoard</div>
                 <div class="summary-value" id="home-total">$0.00</div>
@@ -114,8 +198,9 @@
                 </div>
                 <div class="alloc-bar" id="home-alloc-bar" aria-hidden="true"></div>
                 <div class="home-dots" role="tablist" aria-label="Hoard pages">
-                  <button type="button" class="home-dot" data-home-slide="0" aria-label="The hoard" aria-selected="true"></button>
-                  <button type="button" class="home-dot" data-home-slide="1" aria-label="The reckoning" aria-selected="false"></button>
+                  <button type="button" class="home-dot" data-home-slide="0" aria-label="The wizard" aria-selected="false"></button>
+                  <button type="button" class="home-dot" data-home-slide="1" aria-label="The hoard" aria-selected="true"></button>
+                  <button type="button" class="home-dot" data-home-slide="2" aria-label="The reckoning" aria-selected="false"></button>
                 </div>
               </div>
 
@@ -133,7 +218,7 @@
               </p>
             </div>
 
-            <div class="home-pane" id="home-pane-pl" data-home-slide="1">
+            <div class="home-pane" id="home-pane-pl" data-home-slide="2">
               <div class="summary-card">
                 <div class="summary-label">The reckoning</div>
                 <div class="summary-value" id="home-pl-total">—</div>
@@ -157,8 +242,9 @@
                 </div>
                 <div class="alloc-bar" id="home-pl-alloc-bar" aria-hidden="true"></div>
                 <div class="home-dots" role="tablist" aria-label="Hoard pages">
-                  <button type="button" class="home-dot" data-home-slide="0" aria-label="The hoard" aria-selected="false"></button>
-                  <button type="button" class="home-dot" data-home-slide="1" aria-label="The reckoning" aria-selected="true"></button>
+                  <button type="button" class="home-dot" data-home-slide="0" aria-label="The wizard" aria-selected="false"></button>
+                  <button type="button" class="home-dot" data-home-slide="1" aria-label="The hoard" aria-selected="false"></button>
+                  <button type="button" class="home-dot" data-home-slide="2" aria-label="The reckoning" aria-selected="true"></button>
                 </div>
               </div>
 
@@ -367,7 +453,7 @@
 
       <!-- ADD HOLDING: pick a coin or stock -->
       <section class="view" id="view-add-coin" data-view="add-coin">
-        <p class="page-desc">Search any stock ticker or coin — AAPL, ETH, SOL — or add Gold and Silver in ounces. Built-in chains can also bind a wallet.</p>
+        <p class="page-desc">Search any stock ticker or coin — AAPL, ETH, SOL — or add Cash, Gold, and Silver. Built-in chains can also bind a wallet.</p>
         <label class="field-label" for="asset-search">Scry a ticker</label>
         <input
           id="asset-search"
@@ -405,8 +491,18 @@
         </div>
       </section>
 
+      <!-- RISK: per-relic peril 1–9 -->
+      <section class="view" id="view-risk" data-view="risk">
+        <p class="page-desc">Assign each stock and coin a peril from <strong>1</strong> (steadfast) to <strong>9</strong> (most risky). Ratings are saved on this device.</p>
+        <div class="risk-list" id="risk-list"></div>
+        <p class="empty-hint" id="risk-empty" hidden>Add stocks or coins first, then return to mark their peril.</p>
+      </section>
+
       <!-- SETTINGS: portfolios + data -->
       <section class="view" id="view-settings" data-view="settings">
+        <nav class="codex-menu" aria-label="Codex">
+          <button type="button" class="codex-menu-btn" id="btn-risk">Risk</button>
+        </nav>
         <div class="settings-group">
           <h2>Lightning Power</h2>
           <p class="page-desc">How fiercely the finger-corona answers your touch. Hold to charge, release to blast. At 100 the storm covers the hall.</p>
@@ -437,7 +533,7 @@
 
         <div class="section-head">
           <h2>Portfolios</h2>
-          <button type="button" class="text-btn" id="btn-new-portfolio">+ Found</button>
+          <button type="button" class="text-btn" id="btn-new-portfolio">+ Add</button>
         </div>
         <p class="section-sub home-sub">
           Manage portfolios here. Toggle <strong>In total</strong> to include or exclude a portfolio from the hall hoard.
@@ -472,7 +568,7 @@
         <div class="settings-group">
           <h2>Lore</h2>
           <p class="page-desc">
-            Wizard Portfolio tracks any stock or crypto you add by ticker, Gold and Silver in ounces, plus live wallets for BTC, XRP, XLM, HBAR, ADA, Midnight (NIGHT), DOGE, and LTC. Prices from CoinGecko and Yahoo Finance.
+            Wizard Portfolio tracks any stock or crypto you add by ticker, Cash in USD, Gold and Silver in ounces, plus live wallets for BTC, XRP, XLM, HBAR, ADA, Midnight (NIGHT), DOGE, and LTC. Prices from CoinGecko and Yahoo Finance.
             Not financial advice — just a ledger for your hoard.
           </p>
         </div>

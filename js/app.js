@@ -10,6 +10,53 @@ const SNAPSHOT_KEY = "updown.market.v1";
 const NIGHT_POLICY_ID = "0691b2fecca1ac4f53cb6dfb00b7013e561d1f34403b957cbb5af1fa";
 const NIGHT_ASSET_NAME = "4e49474854";
 
+function isHandheld() {
+  return window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+}
+
+function portraitViewportSize() {
+  if (!document.documentElement.dataset.forcePortrait) {
+    return { w: window.innerWidth, h: window.innerHeight };
+  }
+  return { w: window.innerHeight, h: window.innerWidth };
+}
+
+/** Map a viewport touch into the portrait UI after a landscape fallback rotate. */
+function toPortraitPoint(clientX, clientY) {
+  const mode = document.documentElement.dataset.forcePortrait;
+  if (!mode) return { x: clientX, y: clientY };
+  if (mode === "cw") return { x: window.innerHeight - clientY, y: clientX };
+  return { x: clientY, y: window.innerWidth - clientX };
+}
+
+function applyPortraitFallback() {
+  const html = document.documentElement;
+  html.classList.remove("force-portrait-cw", "force-portrait-ccw");
+  delete html.dataset.forcePortrait;
+  if (!isHandheld()) return;
+
+  const angle = Number(screen.orientation?.angle ?? window.orientation ?? 0);
+  const landscape =
+    Math.abs(angle) === 90 ||
+    Math.abs(angle) === 270 ||
+    window.matchMedia("(orientation: landscape)").matches;
+  if (!landscape) return;
+
+  const cw = angle === 90 || angle === -270;
+  html.classList.add(cw ? "force-portrait-cw" : "force-portrait-ccw");
+  html.dataset.forcePortrait = cw ? "cw" : "ccw";
+}
+
+function lockPortraitOrientation() {
+  try {
+    const lock = screen.orientation?.lock;
+    if (typeof lock === "function") lock.call(screen.orientation, "portrait").catch(() => {});
+  } catch {
+    /* Safari and desktop ignore this */
+  }
+  applyPortraitFallback();
+}
+
 // ── Coin config ────────────────────────────────────────────────────────────
 
 const COINS = [
@@ -139,9 +186,30 @@ const COINS = [
     explorer: null,
     fetchBalance: null,
   },
+  {
+    id: "cash",
+    name: "Cash",
+    symbol: "USD",
+    kind: "cash",
+    unit: "USD",
+    tvSymbol: "TVC:DXY",
+    decimals: 2,
+    color: "#2f6b4a",
+    placeholder: "",
+    note: "US dollars on hand. Price is always $1.00.",
+    explorer: null,
+    fetchBalance: null,
+  },
 ];
 
 const COIN_BY_ID = Object.fromEntries(COINS.map((c) => [c.id, c]));
+
+function displayName(coin) {
+  const name = String(coin?.name || "").trim();
+  const ticker = String(coin?.symbol || "").trim();
+  if (name.length > 20) return ticker || name;
+  return name || ticker;
+}
 
 function colorFromSymbol(sym) {
   let h = 0;
@@ -251,6 +319,7 @@ function findExistingAsset(result) {
   if (!result.geckoId && /\b(XAG|XAGUSD|SI=F)\b/.test(hint)) return getAsset("silver");
   if (result.kind === "metal" && /GOLD|XAU/.test(hint)) return getAsset("gold");
   if (result.kind === "metal" && /SILVER|XAG/.test(hint)) return getAsset("silver");
+  if (result.kind === "cash" || (!result.geckoId && /\b(CASH|USD|DOLLAR|DXY)\b/.test(hint))) return getAsset("cash");
   if (result.kind === "crypto" && result.geckoId) {
     return allAssets().find((a) => a.geckoId === result.geckoId) || null;
   }
@@ -277,6 +346,8 @@ let manualPriceCoinId = null;
 
 /** @type {Record<string, { usd: number, change24h: number }>} */
 let prices = {};
+/** Asset ids that received a live quote on the last refresh. Missing = shown from storage. */
+let freshQuoteIds = new Set(["cash"]);
 
 /**
  * Cached CoinGecko market charts: `${coinId}:${days}` → { fetchedAt, points }
@@ -299,8 +370,12 @@ let balanceCache = {};
 /** Chart fetch in progress (for global header spinner). */
 let chartLoading = false;
 
-/** Home pager: 0 = hoard (default), 1 = the reckoning. Swipe left from the hoard to open the ledger. */
-let homeSlide = 0;
+/** Home pager: 0 wizard · 1 hoard (default) · 2 the reckoning. Swipe right from the hoard for the wizard. */
+const HOME_SLIDE_WIZARD = 0;
+const HOME_SLIDE_HOARD = 1;
+const HOME_SLIDE_PL = 2;
+const HOME_SLIDE_MAX = 2;
+let homeSlide = HOME_SLIDE_HOARD;
 
 /**
  * Load last-known prices + on-chain balances so the UI never flashes $0 on refresh.
@@ -570,6 +645,56 @@ function setLightningStrikes(on) {
   return store.lightningStrikes;
 }
 
+function normalizeAssetRiskMap(raw) {
+  const out = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [id, val] of Object.entries(raw)) {
+    const n = Number(val);
+    if (!id || !Number.isInteger(n) || n < 1 || n > 9) continue;
+    out[id] = n;
+  }
+  return out;
+}
+
+function getAssetRisk(id) {
+  const n = store.assetRisk?.[id];
+  return Number.isInteger(n) && n >= 1 && n <= 9 ? n : null;
+}
+
+function setAssetRisk(id, raw) {
+  if (!id) return null;
+  if (!store.assetRisk || typeof store.assetRisk !== "object") store.assetRisk = {};
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 9) {
+    delete store.assetRisk[id];
+    saveStore();
+    return null;
+  }
+  store.assetRisk[id] = n;
+  saveStore();
+  return n;
+}
+
+/** Unique stocks, coins, and metals the wizard actually holds. */
+function heldAssetsForRisk() {
+  const seen = new Set();
+  const out = [];
+  for (const pf of store.portfolios || []) {
+    for (const coin of allAssets()) {
+      if (!coin || coin.kind === "cash" || coin.id === "cash") continue;
+      if (!portfolioHasCoin(pf, coin.id) || seen.has(coin.id)) continue;
+      seen.add(coin.id);
+      out.push(coin);
+    }
+  }
+  out.sort((a, b) => {
+    const an = displayName(a).toUpperCase();
+    const bn = displayName(b).toUpperCase();
+    return an.localeCompare(bn) || String(a.symbol).localeCompare(String(b.symbol));
+  });
+  return out;
+}
+
 /** Effective lot cost including exchange fee (%). */
 function manualLotCost(amount, unitPrice, feePct) {
   if (unitPrice == null || !Number.isFinite(unitPrice)) return null;
@@ -586,6 +711,8 @@ function defaultStore() {
     lightningPower: 2,
     lightningStrikes: true,
     customAssets: [],
+    lastQuotes: {},
+    assetRisk: {},
     portfolios: [
       {
         id,
@@ -609,6 +736,8 @@ function loadStore() {
         parsed.lightningPower = normalizeLightningPower(parsed.lightningPower);
         parsed.lightningStrikes = parsed.lightningStrikes !== false;
         parsed.customAssets = normalizeCustomAssets(parsed.customAssets);
+        parsed.lastQuotes = parsed.lastQuotes && typeof parsed.lastQuotes === "object" ? parsed.lastQuotes : {};
+        parsed.assetRisk = normalizeAssetRiskMap(parsed.assetRisk);
         return parsed;
       }
     }
@@ -637,6 +766,8 @@ function loadStore() {
         lightningPower: 2,
         lightningStrikes: true,
         customAssets: [],
+        lastQuotes: {},
+        assetRisk: {},
         version: 2,
         activePortfolioId: id,
         portfolios: [{ id, name: "Main", createdAt: Date.now(), includeInTotal: true, holdings }],
@@ -687,6 +818,7 @@ function formatUsd(n, digits) {
 function amountUnit(symbol) {
   const s = String(symbol || "").toUpperCase();
   if (s === "OZ" || s === "XAU" || s === "XAG" || s === "GOLD" || s === "SILVER") return "oz";
+  if (s === "USD" || s === "CASH") return "USD";
   const asset = getAsset(s.toLowerCase()) || allAssets().find((a) => a.symbol === symbol);
   if (asset?.unit) return asset.unit;
   if (asset?.kind === "metal") return "oz";
@@ -697,10 +829,10 @@ function formatAmt(n, symbol) {
   const unit = amountUnit(symbol);
   if (n == null || Number.isNaN(n)) return `— ${unit}`;
   const abs = Math.abs(n);
-  let digits = unit === "oz" ? 4 : 8;
+  let digits = unit === "oz" ? 4 : unit === "USD" ? 2 : 8;
   if (abs >= 1000) digits = 2;
-  else if (abs >= 1) digits = unit === "oz" ? 4 : 4;
-  else if (abs >= 0.01) digits = unit === "oz" ? 4 : 6;
+  else if (abs >= 1) digits = unit === "oz" ? 4 : unit === "USD" ? 2 : 4;
+  else if (abs >= 0.01) digits = unit === "oz" ? 4 : unit === "USD" ? 2 : 6;
   return `${new Intl.NumberFormat("en-US", {
     maximumFractionDigits: digits,
   }).format(n)} ${unit}`;
@@ -732,8 +864,14 @@ function iconContrast(hex) {
 }
 
 /** HTML for a coin avatar using official brand color + symbol. */
+function isQuoteStale(id) {
+  if (!id || id === "cash") return false;
+  return !freshQuoteIds.has(id);
+}
+
 function coinAvatarHtml(coin, { lg = false } = {}) {
-  const cls = lg ? "coin-avatar lg" : "coin-avatar";
+  const stale = isQuoteStale(coin?.id) ? " stale-quote" : "";
+  const cls = `${lg ? "coin-avatar lg" : "coin-avatar"}${stale}`;
   const bg = coin?.color || "#d4af37";
   const fg = iconContrast(bg);
   const id = coin?.id || "";
@@ -755,6 +893,7 @@ function setCoinAvatarEl(el, coin) {
   el.setAttribute("tabindex", "0");
   el.setAttribute("aria-label", `Open ${coin.symbol} chart`);
   el.title = `Open ${coin.symbol} chart`;
+  el.classList.toggle("stale-quote", isQuoteStale(coin.id));
 }
 
 const TV_CRYPTO_SYMBOLS = {
@@ -811,7 +950,29 @@ function escapeHtml(str) {
 
 // ── HTTP / balances ────────────────────────────────────────────────────────
 
-async function fetchJson(url, options = {}, timeoutMs = 15000) {
+function isProxyUrl(url) {
+  return /allorigins\.win|codetabs\.com|corsproxy\.org/.test(url);
+}
+
+function needsCorsProxy() {
+  try {
+    const origin = window.location.origin;
+    const proto = window.location.protocol;
+    return proto === "file:" || proto === "null:" || origin === "null" || origin === "file://";
+  } catch {
+    return true;
+  }
+}
+
+function proxyUrls(url) {
+  return [
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+  ];
+}
+
+async function fetchJsonRaw(url, options = {}, timeoutMs = 15000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -826,25 +987,22 @@ async function fetchJson(url, options = {}, timeoutMs = 15000) {
   }
 }
 
-async function fetchJsonCors(url, timeoutMs = 15000) {
-  const proxies = [
-    url,
-    `https://corsproxy.io/?${encodeURIComponent(url)}`,
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-  ];
-  let lastErr;
-  for (const u of proxies) {
+function unwrapJson(data) {
+  if (data && typeof data.contents === "string") {
     try {
-      const data = await fetchJson(u, {}, timeoutMs);
-      if (data && typeof data.contents === "string") {
-        try {
-          return JSON.parse(data.contents);
-        } catch {
-          /* not wrapped json */
-        }
-      }
-      return data;
+      return JSON.parse(data.contents);
+    } catch {
+      /* keep */
+    }
+  }
+  return data;
+}
+
+async function fetchViaProxy(url, timeoutMs = 7000) {
+  let lastErr;
+  for (const u of proxyUrls(url)) {
+    try {
+      return unwrapJson(await fetchJsonRaw(u, {}, timeoutMs));
     } catch (err) {
       lastErr = err;
     }
@@ -852,11 +1010,47 @@ async function fetchJsonCors(url, timeoutMs = 15000) {
   throw lastErr || new Error("Network error");
 }
 
+async function fetchJson(url, options = {}, timeoutMs = 15000) {
+  const method = String(options.method || "GET").toUpperCase();
+  const canProxy = method === "GET" && !isProxyUrl(url);
+  try {
+    return await fetchJsonRaw(url, options, timeoutMs);
+  } catch (err) {
+    const msg = String(err?.message || err);
+    if (canProxy && /Failed to fetch|NetworkError|TypeError|aborted|HTTP 403|HTTP 429/i.test(msg)) {
+      return fetchViaProxy(url, Math.min(timeoutMs, 12000));
+    }
+    throw err;
+  }
+}
+
+async function fetchJsonCors(url, timeoutMs = 7000) {
+  if (!needsCorsProxy()) {
+    try {
+      return unwrapJson(await fetchJsonRaw(url, {}, timeoutMs));
+    } catch {
+      /* proxy next */
+    }
+  }
+  return fetchViaProxy(url, timeoutMs);
+}
+
+async function fetchJsonRace(urls, timeoutMs = 6000) {
+  return await Promise.any(
+    urls.map(async (url) => unwrapJson(await fetchJsonRaw(url, {}, timeoutMs)))
+  );
+}
+
 /** Live quote, else last shown/saved price so the hoard never blanks. */
 function getQuote(id) {
+  if (id === "cash") return { usd: 1, change24h: 0 };
   const live = prices[id];
   if (live && Number.isFinite(Number(live.usd))) {
     return { usd: Number(live.usd), change24h: Number(live.change24h) || 0 };
+  }
+  const saved = store?.lastQuotes?.[id];
+  if (saved && Number.isFinite(Number(saved.usd))) {
+    return { usd: Number(saved.usd), change24h: Number(saved.change24h) || 0 };
   }
   const asset = getAsset(id);
   if (asset && Number.isFinite(Number(asset.lastUsd))) {
@@ -866,6 +1060,14 @@ function getQuote(id) {
 }
 
 function seedPricesFromAssets() {
+  prices.cash = { usd: 1, change24h: 0 };
+  const saved = store?.lastQuotes || {};
+  for (const [id, q] of Object.entries(saved)) {
+    if (prices[id] && Number.isFinite(Number(prices[id].usd))) continue;
+    if (q && Number.isFinite(Number(q.usd))) {
+      prices[id] = { usd: Number(q.usd), change24h: Number(q.change24h) || 0 };
+    }
+  }
   for (const a of allAssets()) {
     if (prices[a.id] && Number.isFinite(Number(prices[a.id].usd))) continue;
     if (Number.isFinite(Number(a.lastUsd))) {
@@ -878,19 +1080,31 @@ function seedPricesFromAssets() {
 }
 
 function rememberQuotes(map) {
-  if (!map || !Array.isArray(store.customAssets) || !store.customAssets.length) return;
+  if (!map) return;
+  if (!store.lastQuotes || typeof store.lastQuotes !== "object") store.lastQuotes = {};
   let changed = false;
-  store.customAssets = store.customAssets.map((a) => {
-    const q = map[a.id];
-    if (!q || !Number.isFinite(Number(q.usd))) return a;
-    changed = true;
-    return {
-      ...a,
-      lastUsd: Number(q.usd),
-      lastChange24h: Number(q.change24h) || 0,
-      lastUsdAt: Date.now(),
+  for (const [id, q] of Object.entries(map)) {
+    if (!q || !Number.isFinite(Number(q.usd))) continue;
+    store.lastQuotes[id] = {
+      usd: Number(q.usd),
+      change24h: Number(q.change24h) || 0,
+      at: Date.now(),
     };
-  });
+    changed = true;
+  }
+  if (Array.isArray(store.customAssets) && store.customAssets.length) {
+    store.customAssets = store.customAssets.map((a) => {
+      const q = map[a.id];
+      if (!q || !Number.isFinite(Number(q.usd))) return a;
+      changed = true;
+      return {
+        ...a,
+        lastUsd: Number(q.usd),
+        lastChange24h: Number(q.change24h) || 0,
+        lastUsdAt: Date.now(),
+      };
+    });
+  }
   if (changed) saveStore();
 }
 
@@ -1040,74 +1254,199 @@ function parseNasdaqInfo(data) {
 async function fetchStockQuote(symbol) {
   const sym = String(symbol || "").trim();
   if (!sym) return null;
-  const yahoo = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=5d`;
-  const yahoo2 = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=5d`;
+  const enc = encodeURIComponent(sym);
+  const yahoo = `https://query1.finance.yahoo.com/v8/finance/chart/${enc}?interval=1d&range=5d`;
+  const yahoo2 = `https://query2.finance.yahoo.com/v8/finance/chart/${enc}?interval=1d&range=5d`;
+  const proxied = `https://api.allorigins.win/raw?url=${encodeURIComponent(yahoo)}`;
+  try {
+    const data = await fetchJsonRace([yahoo, yahoo2, proxied], 5500);
+    const q = parseYahooChart(data);
+    if (q) return q;
+  } catch {
+    /* fall through */
+  }
   const ns = encodeURIComponent(sym.replace(/-/g, "."));
-  const nasdaq = `https://api.nasdaq.com/api/quote/${ns}/info?assetclass=stocks`;
-  const nasdaqEtf = `https://api.nasdaq.com/api/quote/${ns}/info?assetclass=etf`;
-
-  const tries = [
-    () => fetchJson(yahoo).then(parseYahooChart),
-    () => fetchJson(yahoo2).then(parseYahooChart),
-    () => fetchJsonCors(yahoo).then(parseYahooChart),
-    () => fetchJsonCors(yahoo2).then(parseYahooChart),
-    () => fetchJsonCors(nasdaq).then(parseNasdaqInfo),
-    () => fetchJsonCors(nasdaqEtf).then(parseNasdaqInfo),
-  ];
-  for (const tryOne of tries) {
-    try {
-      const q = await tryOne();
-      if (q && Number.isFinite(q.usd)) return q;
-    } catch {
-      /* next source */
-    }
+  try {
+    const data = await fetchJsonCors(
+      `https://api.nasdaq.com/api/quote/${ns}/info?assetclass=stocks`,
+      5000
+    );
+    const q = parseNasdaqInfo(data);
+    if (q) return q;
+  } catch {
+    /* none */
   }
   return null;
 }
 
+function chunk(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+function sparklineToPoints(pricesArr, spanHours) {
+  const vals = (pricesArr || []).map(Number).filter((n) => Number.isFinite(n));
+  if (vals.length < 2) return [];
+  const use = vals.length > 24 ? vals.slice(-Math.max(24, Math.round(vals.length * (spanHours / 168)))) : vals;
+  const now = Date.now();
+  const step = (spanHours * 3600 * 1000) / Math.max(1, use.length - 1);
+  return use.map((px, i) => /** @type {[number, number]} */ ([now - (use.length - 1 - i) * step, px]));
+}
+
+function cacheSparklineCharts(coinId, sparkPrices) {
+  const day = sparklineToPoints(sparkPrices, 24);
+  if (day.length < 2) return;
+  chartCache[chartCacheKey(coinId, "1")] = { fetchedAt: Date.now(), points: day };
+}
+
+const GECKO_TO_COINCAP = {
+  bitcoin: "bitcoin",
+  ripple: "xrp",
+  stellar: "stellar",
+  "hedera-hashgraph": "hedera",
+  cardano: "cardano",
+  "midnight-3": "midnight",
+  dogecoin: "dogecoin",
+  litecoin: "litecoin",
+};
+
+async function fetchGeckoMarkets(ids) {
+  const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids.join(",")}&order=market_cap_desc&per_page=50&page=1&sparkline=true&price_change_percentage=24h`;
+  try {
+    const data = await fetchJsonRaw(url, {}, 12000);
+    if (Array.isArray(data)) return data;
+  } catch {
+    /* proxy / coincap next */
+  }
+  try {
+    const data = await fetchViaProxy(url, 12000);
+    if (Array.isArray(data)) return data;
+  } catch {
+    /* coincap next */
+  }
+  return null;
+}
+
+async function fetchCoinCapPrices(next, cryptos) {
+  const ids = [
+    ...new Set(
+      cryptos.map((c) => GECKO_TO_COINCAP[c.geckoId] || null).filter(Boolean)
+    ),
+  ];
+  if (!ids.length) return;
+  try {
+    const data = await fetchJsonRaw(
+      `https://api.coincap.io/v2/assets?ids=${encodeURIComponent(ids.join(","))}`,
+      {},
+      10000
+    );
+    const rows = data?.data;
+    if (!Array.isArray(rows)) return;
+    const byCap = Object.fromEntries(rows.map((r) => [r.id, r]));
+    for (const coin of cryptos) {
+      const capId = GECKO_TO_COINCAP[coin.geckoId];
+      const row = capId && byCap[capId];
+      if (!row) continue;
+      const usd = Number(row.priceUsd);
+      if (!Number.isFinite(usd)) continue;
+      next[coin.id] = {
+        usd,
+        change24h: Number(row.changePercent24Hr) || 0,
+      };
+      freshQuoteIds.add(coin.id);
+    }
+  } catch {
+    /* keep last quotes */
+  }
+}
+
+async function fetchCoinCapDayChart(coin) {
+  const capId = GECKO_TO_COINCAP[coin.geckoId];
+  if (!capId) return;
+  const end = Date.now();
+  const start = end - 24 * 3600 * 1000;
+  try {
+    const data = await fetchJsonRaw(
+      `https://api.coincap.io/v2/assets/${encodeURIComponent(capId)}/history?interval=m5&start=${start}&end=${end}`,
+      {},
+      10000
+    );
+    const pts = (data?.data || [])
+      .map((p) => [Number(p.time), Number(p.priceUsd)])
+      .filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
+    if (pts.length >= 2) chartCache[chartCacheKey(coin.id, "1")] = { fetchedAt: Date.now(), points: pts };
+  } catch {
+    /* ignore */
+  }
+}
+
+async function fetchCryptoPrices(next) {
+  const cryptos = allAssets().filter((a) => a.geckoId);
+  if (!cryptos.length) return;
+  const ids = [...new Set(cryptos.map((c) => c.geckoId))];
+  let gotGecko = false;
+  for (const group of chunk(ids, 50)) {
+    const rows = await fetchGeckoMarkets(group);
+    if (!rows) continue;
+    gotGecko = true;
+    const byGecko = Object.fromEntries(rows.map((r) => [r.id, r]));
+    for (const coin of cryptos) {
+      const row = byGecko[coin.geckoId];
+      if (!row) continue;
+      const usd = Number(row.current_price);
+      if (Number.isFinite(usd)) {
+        next[coin.id] = {
+          usd,
+          change24h: Number(row.price_change_percentage_24h) || 0,
+        };
+        freshQuoteIds.add(coin.id);
+      }
+      const spark = row.sparkline_in_7d?.price;
+      if (Array.isArray(spark) && spark.length > 2) cacheSparklineCharts(coin.id, spark);
+    }
+  }
+  if (!gotGecko) await fetchCoinCapPrices(next, cryptos);
+
+  const needCharts = cryptos.filter((c) => !chartCache[chartCacheKey(c.id, "1")]?.points?.length);
+  if (needCharts.length) {
+    await runPool(
+      needCharts.map((coin) => async () => fetchCoinCapDayChart(coin)),
+      2
+    );
+  }
+}
+
+async function fetchQuotedAssetPrices(next) {
+  const quoted = allAssets().filter((a) => a.yahooSymbol && !a.geckoId);
+  if (!quoted.length) return;
+  await runPool(
+    quoted.map((asset) => async () => {
+      try {
+        const q = await fetchStockQuote(asset.yahooSymbol);
+        if (q) {
+          next[asset.id] = q;
+          prices[asset.id] = q;
+          freshQuoteIds.add(asset.id);
+        }
+      } catch {
+        /* keep last quote */
+      }
+    }),
+    4
+  );
+}
+
 async function fetchPrices() {
-  const assets = allAssets();
-  const cryptos = assets.filter((a) => a.geckoId);
-  const stocks = assets.filter((a) => a.yahooSymbol && !a.geckoId);
+  freshQuoteIds = new Set(["cash"]);
   const next = { ...prices };
   seedPricesFromAssets();
+  next.cash = { usd: 1, change24h: 0 };
   for (const [id, q] of Object.entries(prices)) {
     if (q && Number.isFinite(q.usd) && !next[id]) next[id] = q;
   }
 
-  if (cryptos.length) {
-    try {
-      const ids = [...new Set(cryptos.map((c) => c.geckoId))].join(",");
-      const data = await fetchJson(
-        `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=usd&include_24hr_change=true`
-      );
-      for (const coin of cryptos) {
-        const row = data[coin.geckoId];
-        if (row && row.usd != null && Number.isFinite(Number(row.usd))) {
-          next[coin.id] = {
-            usd: Number(row.usd),
-            change24h: Number(row.usd_24h_change) || 0,
-          };
-        }
-      }
-    } catch {
-      /* keep last crypto quotes */
-    }
-  }
-
-  if (stocks.length) {
-    await runPool(
-      stocks.map((stock) => async () => {
-        try {
-          const q = await fetchStockQuote(stock.yahooSymbol);
-          if (q) next[stock.id] = q;
-        } catch {
-          /* keep last quote */
-        }
-      }),
-      3
-    );
-  }
+  await Promise.all([fetchCryptoPrices(next), fetchQuotedAssetPrices(next)]);
 
   prices = next;
   rememberQuotes(next);
@@ -1118,10 +1457,6 @@ const CHART_CACHE_MS = 5 * 60 * 1000;
 
 const CHART_RANGES = {
   "1": { label: "24H", days: "1", spanMs: 24 * 3600 * 1000 },
-  "7": { label: "7D", days: "7", spanMs: 7 * 24 * 3600 * 1000 },
-  "30": { label: "30D", days: "30", spanMs: 30 * 24 * 3600 * 1000 },
-  "90": { label: "90D", days: "90", spanMs: 90 * 24 * 3600 * 1000 },
-  max: { label: "ALL", days: "max", spanMs: 10 * 365 * 24 * 3600 * 1000 },
 };
 
 function chartCacheKey(coinId, days) {
@@ -1133,8 +1468,8 @@ function rangeSpanMs(days) {
 }
 
 async function fetchStockChart(symbol, days = "1") {
-  const range = days === "1" || days === 1 ? "1d" : days === "7" ? "5d" : days === "30" ? "1mo" : days === "90" ? "3mo" : "max";
-  const interval = range === "1d" ? "5m" : "1d";
+  const range = "1d";
+  const interval = "5m";
   const data = await fetchJsonCors(
     `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&range=${range}`
   );
@@ -1175,34 +1510,13 @@ async function fetchCoinChart(coinId, days = "1") {
     return [];
   }
 
-  let lastErr;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const data = await fetchJson(
-        `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(coin.geckoId)}/market_chart?vs_currency=usd&days=${encodeURIComponent(days)}`,
-        {},
-        20000
-      );
-      const points = Array.isArray(data?.prices)
-        ? data.prices
-            .filter((p) => Array.isArray(p) && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]))
-            .map((p) => /** @type {[number, number]} */ ([p[0], p[1]]))
-        : [];
-      if (points.length) {
-        chartCache[key] = { fetchedAt: Date.now(), points };
-        return points;
-      }
-      lastErr = new Error("Empty chart data");
-    } catch (err) {
-      lastErr = err;
-      const msg = String(err?.message || err);
-      if (/429/.test(msg)) await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
-      else if (attempt === 0) await new Promise((r) => setTimeout(r, 300));
-    }
+  // 24h sparkline from the batched /coins/markets call — no per-coin 7d/market_chart.
+  const spark = chartCache[chartCacheKey(coinId, "1")];
+  if (spark?.points?.length && Date.now() - spark.fetchedAt < CHART_CACHE_MS * 2) {
+    return spark.points;
   }
-  // Stale cache is better than nothing
   if (cached?.points?.length) return cached.points;
-  throw lastErr || new Error("Chart fetch failed");
+  return [];
 }
 
 /**
@@ -1764,8 +2078,7 @@ async function refreshAll({ fromPull } = {}) {
       // Keep prior prices — do not wipe to zero
     }
 
-    // Allow pull-to-refresh to pull fresh 24h series
-    chartCache = {};
+    // Keep sparkline chart cache; fetchPrices refreshes it. Don't wipe or we re-hit CoinGecko per coin.
 
     const jobs = [];
     for (const pf of store.portfolios) {
@@ -1955,8 +2268,9 @@ function wirePullToRefresh() {
         return;
       }
       const t = e.touches[0];
-      PTR.startY = t.clientY;
-      PTR.startX = t.clientX;
+      const p = toPortraitPoint(t.clientX, t.clientY);
+      PTR.startY = p.y;
+      PTR.startX = p.x;
       PTR.distance = 0;
       PTR.armed = false;
       PTR.active = false;
@@ -1973,8 +2287,9 @@ function wirePullToRefresh() {
       if (!PTR.canPull || refreshInFlight) return;
 
       const t = e.touches[0];
-      const dy = t.clientY - PTR.startY; // >0 = finger down = overscroll at top
-      const dx = t.clientX - PTR.startX;
+      const p = toPortraitPoint(t.clientX, t.clientY);
+      const dy = p.y - PTR.startY; // >0 = finger down = overscroll at top
+      const dx = p.x - PTR.startX;
 
       // Already scrolled away before we claimed the gesture → pure scroll
       if (!PTR.active && !isAtScrollTop(views)) {
@@ -2162,12 +2477,18 @@ function render() {
     title.hidden = false;
     title.textContent = "Codex";
     renderSettings();
+  } else if (nav.view === "risk") {
+    if (brand) brand.hidden = true;
+    title.hidden = false;
+    title.textContent = "Risk";
+    renderRisk();
   } else if (nav.view === "tv") {
     if (brand) brand.hidden = true;
     title.hidden = false;
     title.textContent = getAsset(nav.coinId)?.symbol || "Chart";
     renderTvChart();
   }
+  if (nav.view !== "home") syncWizardFilm();
 }
 
 function renderTvChart() {
@@ -2179,7 +2500,7 @@ function renderTvChart() {
   setCoinAvatarEl(document.getElementById("tv-avatar"), asset);
   const nameEl = document.getElementById("tv-name");
   const subEl = document.getElementById("tv-symbol");
-  if (nameEl) nameEl.textContent = asset.name;
+  if (nameEl) nameEl.textContent = displayName(asset);
   if (subEl) {
     const tvSym = tradingViewSymbol(asset);
     subEl.textContent = `${asset.symbol} · ${tvSym}`;
@@ -2209,6 +2530,8 @@ function renderHome() {
   const rows = (allocRows || []).filter((r) => r.balance > 0 || r.usd > 0);
   if (!rows.length) {
     empty.hidden = false;
+    renderWizardHud();
+    renderHomePl();
     return;
   }
   empty.hidden = true;
@@ -2238,7 +2561,7 @@ function renderHome() {
       <div class="holding-left">
         ${coinAvatarHtml(coin)}
         <div>
-          <div class="holding-name">${escapeHtml(coin.name)}</div>
+          <div class="holding-name">${escapeHtml(displayName(coin))}</div>
           <div class="holding-symbol">${coin.symbol}</div>
         </div>
       </div>
@@ -2254,7 +2577,100 @@ function renderHome() {
     list.appendChild(row);
   }
 
+  renderWizardHud();
   renderHomePl();
+}
+
+/** Placeholder vitals until the shield / power / health formulas land. */
+function setHudBar(fillId, pctId, value) {
+  const n = Math.max(0, Math.min(100, Number(value) || 0));
+  const fill = document.getElementById(fillId);
+  const label = document.getElementById(pctId);
+  if (fill) fill.style.width = `${n}%`;
+  if (label) label.textContent = `${Math.round(n)}%`;
+}
+
+function setLedgerCell(id, text, cls) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove("up", "down", "neutral");
+  if (cls) el.classList.add(cls);
+}
+
+function renderWizardHud() {
+  // Placeholder values — calculations will replace these.
+  setHudBar("wizard-shield-fill", "wizard-shield-pct", 0);
+  setHudBar("wizard-power-fill", "wizard-power-pct", 0);
+  setHudBar("wizard-health-fill", "wizard-health-pct", 0);
+  updateWizardFilmClip();
+
+  const { changeUsd, changePct, allocRows } = allPortfoliosTotals();
+  const cost = allPortfoliosCostTotals();
+
+  const todayPct = formatPct(changePct);
+  setLedgerCell("wizard-today-pct", todayPct.text, todayPct.cls);
+
+  const todayUsd = formatChangeUsd(changeUsd, null);
+  setLedgerCell("wizard-today-usd", todayUsd.text, todayUsd.cls);
+
+  const totalPct = formatPct(cost.plPct);
+  setLedgerCell("wizard-total-pct", totalPct.text, totalPct.cls);
+
+  renderWizardHoldings(allocRows, cost.rows);
+}
+
+function renderWizardHoldings(allocRows, plRows) {
+  const body = document.getElementById("wizard-holdings-body");
+  if (!body) return;
+
+  const plById = Object.fromEntries((plRows || []).map((r) => [r.coinId, r]));
+  const rows = (allocRows || []).filter((r) => r.balance > 0 || r.usd > 0);
+
+  body.innerHTML = "";
+  if (!rows.length) {
+    body.innerHTML = `<tr class="empty-row"><td colspan="6">The hoard is empty.</td></tr>`;
+    return;
+  }
+
+  for (const r of rows) {
+    const coin = getAsset(r.coinId);
+    if (!coin) continue;
+    const px = getQuote(coin.id)?.usd;
+    const ch = getQuote(coin.id)?.change24h;
+    const day = formatPct(ch);
+    const priceCls =
+      px == null || ch == null || Number.isNaN(Number(ch))
+        ? "neutral"
+        : ch > 0
+          ? "up"
+          : ch < 0
+            ? "down"
+            : "flat";
+    const total = formatPct(plById[coin.id]?.plPct);
+    const risk = getAssetRisk(coin.id);
+    const riskCls =
+      risk == null ? "neutral" : risk <= 3 ? "risk-low" : risk <= 6 ? "risk-mid" : "risk-high";
+    const allocCls = !Number.isFinite(r.alloc)
+      ? "neutral"
+      : r.alloc <= 10
+        ? "alloc-low"
+        : r.alloc <= 20
+          ? "alloc-mid"
+          : "alloc-high";
+    const alloc = Number.isFinite(r.alloc) ? `${r.alloc.toFixed(1)}%` : "—";
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="ticker">${escapeHtml(coin.symbol)}</td>
+      <td class="${priceCls}">${px != null ? formatUsd(px) : "—"}</td>
+      <td class="${allocCls}">${alloc}</td>
+      <td class="${riskCls}">${risk != null ? String(risk) : "—"}</td>
+      <td class="${day.cls}">${day.text}</td>
+      <td class="${total.cls}">${total.text}</td>
+    `;
+    body.appendChild(tr);
+  }
 }
 
 function renderHomePl() {
@@ -2321,7 +2737,7 @@ function renderHomePl() {
       <div class="holding-left">
         ${coinAvatarHtml(coin)}
         <div>
-          <div class="holding-name">${escapeHtml(coin.name)}</div>
+          <div class="holding-name">${escapeHtml(displayName(coin))}</div>
           <div class="holding-symbol">${coin.symbol}${r.balance > 0 ? ` · ${formatAmt(r.balance, coin.symbol)}` : ""}</div>
         </div>
       </div>
@@ -2412,6 +2828,46 @@ function renderSettings() {
   }
 }
 
+function renderRisk() {
+  const list = document.getElementById("risk-list");
+  const empty = document.getElementById("risk-empty");
+  if (!list) return;
+
+  const assets = heldAssetsForRisk();
+  list.innerHTML = "";
+  if (!assets.length) {
+    if (empty) empty.hidden = false;
+    return;
+  }
+  if (empty) empty.hidden = true;
+
+  for (const coin of assets) {
+    const risk = getAssetRisk(coin.id);
+    const mark = risk != null ? String(risk) : "—";
+    const pips = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+      .map((n) => {
+        const on = risk === n ? " is-on" : "";
+        return `<button type="button" class="risk-pip${on}" data-risk-id="${escapeHtml(coin.id)}" data-risk-set="${n}" aria-pressed="${risk === n ? "true" : "false"}" aria-label="${escapeHtml(coin.symbol)} risk ${n}">${n}</button>`;
+      })
+      .join("");
+
+    const row = document.createElement("div");
+    row.className = "risk-row";
+    row.innerHTML = `
+      <div class="risk-row-head">
+        ${coinAvatarHtml(coin)}
+        <div class="risk-row-text">
+          <div class="risk-row-name">${escapeHtml(displayName(coin))}</div>
+          <div class="risk-row-symbol">${escapeHtml(coin.symbol)}</div>
+        </div>
+        <div class="risk-row-mark" aria-hidden="true">${mark}</div>
+      </div>
+      <div class="risk-scale" role="group" aria-label="${escapeHtml(coin.symbol)} risk 1 to 9">${pips}</div>
+    `;
+    list.appendChild(row);
+  }
+}
+
 function renderPortfolio() {
   const pf = getPortfolio(nav.portfolioId);
   if (!pf) {
@@ -2483,7 +2939,7 @@ function renderPortfolio() {
       <div class="holding-left">
         ${coinAvatarHtml(coin)}
         <div>
-          <div class="holding-name">${escapeHtml(coin.name)}</div>
+          <div class="holding-name">${escapeHtml(displayName(coin))}</div>
           <div class="holding-symbol">${coin.symbol}${sub}</div>
         </div>
       </div>
@@ -2512,7 +2968,7 @@ function renderAsset() {
 
   setCoinAvatarEl(document.getElementById("asset-avatar"), coin);
 
-  document.getElementById("asset-name").textContent = coin.name;
+  document.getElementById("asset-name").textContent = displayName(coin);
   const px = getQuote(coin.id)?.usd;
   const ch = getQuote(coin.id)?.change24h;
   const pct = formatPct(ch);
@@ -2582,7 +3038,11 @@ function renderAsset() {
     document.getElementById("address-hint").textContent = coin.note || "";
   }
   document.getElementById("manual-amount-input").placeholder =
-    coin.kind === "metal" || coin.unit === "oz" ? "Ounces (oz)" : `Amount in ${coin.symbol}`;
+    coin.kind === "metal" || coin.unit === "oz"
+      ? "Ounces (oz)"
+      : coin.kind === "cash"
+        ? "Amount in USD"
+        : `Amount in ${coin.symbol}`;
 
   // Price paid: default to live market price (editable). Don't overwrite user edits.
   if (manualPriceCoinId !== coin.id) {
@@ -2591,7 +3051,11 @@ function renderAsset() {
   }
   const priceInput = document.getElementById("manual-price-input");
   priceInput.placeholder =
-    coin.kind === "metal" || coin.unit === "oz" ? "USD per oz" : `USD per ${coin.symbol}`;
+    coin.kind === "metal" || coin.unit === "oz"
+      ? "USD per oz"
+      : coin.kind === "cash"
+        ? "USD (always 1.00)"
+        : `USD per ${coin.symbol}`;
   if (document.activeElement !== priceInput && !manualPriceDirty) {
     priceInput.value = px != null && px > 0 ? String(roundPriceInput(px)) : "";
   }
@@ -2704,7 +3168,7 @@ function appendAssetPickRow(list, coin, { badge } = {}) {
   btn.innerHTML = `
     ${coinAvatarHtml(coin)}
     <div class="grow">
-      <div class="name">${escapeHtml(coin.name)}</div>
+      <div class="name">${escapeHtml(displayName(coin))}</div>
       <div class="sym">${escapeHtml(coin.symbol)}${extra}</div>
     </div>
     <span class="chev">›</span>
@@ -2717,11 +3181,12 @@ function renderAddCoin() {
   if (!list) return;
   list.innerHTML = "";
   const assets = allAssets();
-  const pinned = assets.filter((c) => c.kind === "metal");
-  const rest = assets.filter((c) => c.kind !== "metal");
+  const pinOrder = ["gold", "silver", "cash"];
+  const pinned = pinOrder.map((id) => assets.find((c) => c.id === id)).filter(Boolean);
+  const rest = assets.filter((c) => !pinOrder.includes(c.id));
   for (const coin of [...pinned, ...rest]) {
     const badge =
-      coin.kind === "metal" ? "Metal" : COIN_BY_ID[coin.id] ? null : coin.kind === "stock" ? "Stock" : "Coin";
+      coin.kind === "metal" ? "Metal" : coin.kind === "cash" ? "Cash" : COIN_BY_ID[coin.id] ? null : coin.kind === "stock" ? "Stock" : "Coin";
     const btn = appendAssetPickRow(list, coin, { badge });
     btn.addEventListener("click", () => showView("asset", { coinId: coin.id }));
     list.appendChild(btn);
@@ -2776,7 +3241,13 @@ function renderSearchResults(results, query) {
       color: colorFromSymbol(hit.symbol),
     };
     const badge =
-      hit.kind === "metal" ? "Metal · oz" : hit.kind === "stock" ? `Stock${hit.exch ? ` · ${hit.exch}` : ""}` : "Coin";
+      hit.kind === "metal"
+        ? "Metal · oz"
+        : hit.kind === "cash"
+          ? "Cash"
+          : hit.kind === "stock"
+            ? `Stock${hit.exch ? ` · ${hit.exch}` : ""}`
+            : "Coin";
     const btn = appendAssetPickRow(box, preview, { badge });
     btn.addEventListener("click", async () => {
       const id = ensureCustomAsset(hit);
@@ -2791,6 +3262,7 @@ function renderSearchResults(results, query) {
           const q = await fetchStockQuote(asset.yahooSymbol);
           if (q) {
             prices[id] = q;
+            freshQuoteIds.add(id);
             rememberQuotes({ [id]: q });
             saveMarketSnapshot();
             render();
@@ -2827,16 +3299,19 @@ async function runAssetSearch(query) {
   try {
     const q = query.toLowerCase();
     const metals = allAssets()
-      .filter((a) => a.kind === "metal")
+      .filter((a) => a.kind === "metal" || a.kind === "cash")
       .filter(
         (a) =>
           a.name.toLowerCase().includes(q) ||
           a.symbol.toLowerCase().includes(q) ||
           q === "oz" ||
-          q.startsWith("ounce")
+          q.startsWith("ounce") ||
+          q === "cash" ||
+          q === "usd" ||
+          q.startsWith("dollar")
       )
       .map((a) => ({
-        kind: "metal",
+        kind: a.kind,
         name: a.name,
         symbol: a.symbol,
         yahooSymbol: a.yahooSymbol,
@@ -3137,6 +3612,10 @@ function importData(file) {
         customAssets: normalizeCustomAssets(
           data.customAssets != null ? data.customAssets : store.customAssets
         ),
+        lastQuotes: data.lastQuotes && typeof data.lastQuotes === "object" ? data.lastQuotes : store.lastQuotes || {},
+        assetRisk: normalizeAssetRiskMap(
+          data.assetRisk != null ? data.assetRisk : store.assetRisk
+        ),
         portfolios: data.portfolios.map(normalizePortfolio),
       };
       if (!store.portfolios.length) store = defaultStore();
@@ -3170,6 +3649,45 @@ function wipeAll() {
 
 // ── Event wiring ───────────────────────────────────────────────────────────
 
+function wizardDayTone() {
+  const { changeUsd, totalUsd } = allPortfoliosTotals();
+  if (!(totalUsd > 0) || changeUsd == null || Number.isNaN(changeUsd) || changeUsd === 0) return "gold";
+  return changeUsd > 0 ? "up" : "down";
+}
+
+function updateWizardFilmClip() {
+  const film = document.getElementById("wizard-film");
+  const card = document.getElementById("wizard-film-card");
+  const src = splashVideoSrc();
+  const tone = wizardDayTone();
+  if (card) {
+    card.classList.remove("tone-gold", "tone-up", "tone-down");
+    card.classList.add(`tone-${tone}`);
+  }
+  if (!film) return;
+  const current = film.dataset.clip || film.getAttribute("src") || "";
+  if (current !== src) {
+    film.dataset.clip = src;
+    film.src = src;
+  } else {
+    film.dataset.clip = src;
+  }
+}
+
+function syncWizardFilm() {
+  const film = document.getElementById("wizard-film");
+  if (!film) return;
+  updateWizardFilmClip();
+  const show = nav.view === "home" && homeSlide === HOME_SLIDE_WIZARD;
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (show && !reduced) {
+    const play = film.play();
+    if (play && typeof play.catch === "function") play.catch(() => {});
+  } else {
+    film.pause();
+  }
+}
+
 function syncHomePager(animate) {
   const pager = document.getElementById("home-pager");
   const track = document.getElementById("home-track");
@@ -3181,10 +3699,12 @@ function syncHomePager(animate) {
     const on = Number(dot.dataset.homeSlide) === homeSlide;
     dot.setAttribute("aria-selected", on ? "true" : "false");
   });
+  syncWizardFilm();
 }
 
 function setHomeSlide(index, animate = true) {
-  homeSlide = index === 0 ? 0 : 1;
+  const n = Number(index);
+  homeSlide = Number.isFinite(n) ? Math.max(0, Math.min(HOME_SLIDE_MAX, Math.round(n))) : HOME_SLIDE_HOARD;
   syncHomePager(animate);
 }
 
@@ -3213,8 +3733,9 @@ function wireHomePager() {
     (e) => {
       if (nav.view !== "home" || e.touches.length !== 1) return;
       const t = e.touches[0];
-      drag.startX = t.clientX;
-      drag.startY = t.clientY;
+      const p = toPortraitPoint(t.clientX, t.clientY);
+      drag.startX = p.x;
+      drag.startY = p.y;
       drag.dx = 0;
       drag.tracking = true;
       drag.locked = null;
@@ -3228,15 +3749,16 @@ function wireHomePager() {
     (e) => {
       if (!drag.tracking) return;
       const t = e.touches[0];
-      const dx = t.clientX - drag.startX;
-      const dy = t.clientY - drag.startY;
+      const p = toPortraitPoint(t.clientX, t.clientY);
+      const dx = p.x - drag.startX;
+      const dy = p.y - drag.startY;
       if (!drag.locked) {
         if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
         drag.locked = Math.abs(dx) > Math.abs(dy) * 1.15 ? "x" : "y";
       }
       if (drag.locked !== "x") return;
       let adx = dx;
-      if ((homeSlide === 0 && dx > 0) || (homeSlide === 1 && dx < 0)) {
+      if ((homeSlide === 0 && dx > 0) || (homeSlide === HOME_SLIDE_MAX && dx < 0)) {
         adx = dx * 0.28;
       }
       drag.dx = adx;
@@ -3250,7 +3772,7 @@ function wireHomePager() {
     if (!drag.tracking) return;
     const flip = drag.locked === "x" && Math.abs(drag.dx) > Math.max(48, drag.width * 0.2);
     if (flip) {
-      homeSlide = drag.dx > 0 ? Math.max(0, homeSlide - 1) : Math.min(1, homeSlide + 1);
+      homeSlide = drag.dx > 0 ? Math.max(0, homeSlide - 1) : Math.min(HOME_SLIDE_MAX, homeSlide + 1);
     }
     drag.tracking = false;
     drag.locked = null;
@@ -3370,7 +3892,7 @@ function drawKirlianBranch(ctx, x, y, ang, len, width, depth, seed, pal, forkCha
 
 function pickKirlianTargets(fromX, fromY, count) {
   const skipRe =
-    /^(app|views|view|view-active|view-home|home-pager|home-track|home-pane|holdings-list|portfolio-list|address-list|coin-pick-list|kirlian-canvas)$/;
+    /^(app|views|view|view-active|view-home|home-pager|home-track|home-pane|holdings-list|portfolio-list|address-list|coin-pick-list|risk-list|codex-menu|wizard-hud|kirlian-canvas)$/;
   const nodes = document.querySelectorAll(
     "#app .view.view-active div, #app .view.view-active button, #app .view.view-active h2, #app .holding-row, #app .summary-card, #app .pf-card, #app .settings-group, #app .topbar, #app .brand, #app .coin-avatar, #app .field-input, .modal.sheet"
   );
@@ -3385,11 +3907,11 @@ function pickKirlianTargets(fromX, fromY, count) {
     if (cls && skipRe.test(cls)) continue;
     const r = el.getBoundingClientRect();
     if (r.width < 28 || r.height < 14) continue;
-    if (r.width > window.innerWidth * 0.96 && r.height > window.innerHeight * 0.55) continue;
+    const vp = portraitViewportSize();
+    if (r.width > vp.w * 0.96 && r.height > vp.h * 0.55) continue;
     if (r.bottom < 8 || r.right < 8 || r.top > window.innerHeight - 8 || r.left > window.innerWidth - 8) continue;
-    const cx = r.left + r.width / 2;
-    const cy = r.top + r.height / 2;
-    if (Math.hypot(cx - fromX, cy - fromY) < 48) continue;
+    const mid = toPortraitPoint(r.left + r.width / 2, r.top + r.height / 2);
+    if (Math.hypot(mid.x - fromX, mid.y - fromY) < 48) continue;
     pool.push(r);
   }
   if (!pool.length) return [];
@@ -3401,9 +3923,10 @@ function pickKirlianTargets(fromX, fromY, count) {
     const rx = 0.18 + Math.random() * 0.64;
     const ry = 0.18 + Math.random() * 0.64;
     const thick = Math.random();
+    const pt = toPortraitPoint(r.left + r.width * rx, r.top + r.height * ry);
     return {
-      x: r.left + r.width * rx,
-      y: r.top + r.height * ry,
+      x: pt.x,
+      y: pt.y,
       left: r.left,
       top: r.top,
       width: r.width,
@@ -3743,8 +4266,9 @@ function wireKirlian() {
       if (!el.isConnected) continue;
       const box = el.getBoundingClientRect();
       if (box.width < 8 || box.height < 8) continue;
-      const ex = box.left + box.width / 2;
-      const ey = box.top + box.height / 2;
+      const mid = toPortraitPoint(box.left + box.width / 2, box.top + box.height / 2);
+      const ex = mid.x;
+      const ey = mid.y;
       const d = Math.hypot(ex - cx, ey - cy) || 1;
       let wave = 0;
       for (let i = 0; i < 5; i++) {
@@ -3776,8 +4300,9 @@ function wireKirlian() {
 
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
-    cssW = window.innerWidth;
-    cssH = window.innerHeight;
+    const vp = portraitViewportSize();
+    cssW = vp.w;
+    cssH = vp.h;
     canvas.width = Math.round(cssW * dpr);
     canvas.height = Math.round(cssH * dpr);
   }
@@ -3890,7 +4415,10 @@ function wireKirlian() {
 
   document.addEventListener(
     "pointerdown",
-    (e) => upsert(e.pointerId, e.clientX, e.clientY),
+    (e) => {
+      const p = toPortraitPoint(e.clientX, e.clientY);
+      upsert(e.pointerId, p.x, p.y);
+    },
     { capture: true, passive: true }
   );
   document.addEventListener(
@@ -3898,7 +4426,8 @@ function wireKirlian() {
     (e) => {
       if (e.pointerType === "mouse" && e.buttons === 0) return;
       if (!contacts.has(e.pointerId) && e.pointerType === "mouse") return;
-      upsert(e.pointerId, e.clientX, e.clientY);
+      const p = toPortraitPoint(e.clientX, e.clientY);
+      upsert(e.pointerId, p.x, p.y);
     },
     { capture: true, passive: true }
   );
@@ -3938,23 +4467,8 @@ function wire() {
     updateHomeChart(null, { force: true });
   });
 
-  document.getElementById("btn-back").addEventListener("click", () => {
-    if (nav.view === "tv") {
-      const backTo = nav.tvReturn || { view: "home" };
-      nav.tvReturn = null;
-      showView(backTo.view || "home", {
-        portfolioId: backTo.portfolioId,
-        coinId: backTo.coinId,
-      });
-    } else if (nav.view === "asset" || nav.view === "add-coin") {
-      showView("portfolio", { portfolioId: nav.portfolioId });
-    } else if (nav.view === "portfolio") {
-      // Portfolios are managed from Settings
-      showView("settings");
-    } else if (nav.view === "settings") {
-      showView("home");
-    }
-  });
+  document.getElementById("btn-back").addEventListener("click", goBack);
+  wireBackSwipe();
 
   document.addEventListener(
     "click",
@@ -3969,6 +4483,7 @@ function wire() {
     },
     true
   );
+
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" && e.key !== " ") return;
     const av = e.target.closest?.("[data-open-tv]");
@@ -3980,6 +4495,16 @@ function wire() {
   });
 
   document.getElementById("btn-settings").addEventListener("click", () => showView("settings"));
+  document.getElementById("btn-risk")?.addEventListener("click", () => showView("risk"));
+  document.getElementById("risk-list")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-risk-set]");
+    if (!btn || nav.view !== "risk") return;
+    const id = btn.getAttribute("data-risk-id");
+    const n = Number(btn.getAttribute("data-risk-set"));
+    if (!id || !Number.isInteger(n)) return;
+    setAssetRisk(id, n);
+    renderRisk();
+  });
 
   document.getElementById("btn-new-portfolio").addEventListener("click", () => openPortfolioModal("create"));
   document.getElementById("btn-rename-portfolio").addEventListener("click", () => openPortfolioModal("rename"));
@@ -4099,12 +4624,131 @@ function wire() {
   });
   document.getElementById("btn-wipe").addEventListener("click", wipeAll);
 
-  // Close modals on backdrop click
   for (const id of ["modal-portfolio", "modal-picker"]) {
     document.getElementById(id).addEventListener("click", (e) => {
       if (e.target.id === id) e.target.hidden = true;
     });
   }
+}
+
+function canBackSwipe() {
+  return nav.view && nav.view !== "home";
+}
+
+function activeViewEl() {
+  return document.querySelector(".view.view-active");
+}
+
+function clearBackSwipePaint(el) {
+  const view = el || activeViewEl();
+  if (!view) return;
+  view.classList.remove("back-swiping");
+  view.style.transition = "";
+  view.style.transform = "";
+}
+
+function goBack() {
+  const leaving = activeViewEl();
+  clearBackSwipePaint(leaving);
+  if (nav.view === "tv") {
+    const backTo = nav.tvReturn || { view: "home" };
+    nav.tvReturn = null;
+    showView(backTo.view || "home", {
+      portfolioId: backTo.portfolioId,
+      coinId: backTo.coinId,
+    });
+  } else if (nav.view === "asset" || nav.view === "add-coin") {
+    showView("portfolio", { portfolioId: nav.portfolioId });
+  } else if (nav.view === "portfolio") {
+    showView("settings");
+  } else if (nav.view === "risk") {
+    showView("settings");
+  } else if (nav.view === "settings") {
+    showView("home");
+  }
+}
+
+function wireBackSwipe() {
+  const views = getViewsEl();
+  if (!views) return;
+  const swipe = { startX: 0, startY: 0, dx: 0, locked: null, tracking: false, width: 0 };
+
+  const ignoreSwipeFrom = (el) =>
+    !!el?.closest?.("input, textarea, select, button, a, label.switch, .tv-wrap, .modal-backdrop");
+
+  function paintDrag() {
+    const view = activeViewEl();
+    if (!view) return;
+    const x = Math.max(0, swipe.dx);
+    view.classList.add("back-swiping");
+    view.style.transition = "none";
+    view.style.transform = `translate3d(${x}px, 0, 0)`;
+  }
+
+  function snapBack() {
+    const view = activeViewEl();
+    if (!view) return;
+    view.classList.add("back-swiping");
+    view.style.transition = "transform 0.22s ease";
+    view.style.transform = "translate3d(0, 0, 0)";
+    const finish = () => clearBackSwipePaint(view);
+    view.addEventListener("transitionend", finish, { once: true });
+    setTimeout(finish, 280);
+  }
+
+  views.addEventListener(
+    "touchstart",
+    (e) => {
+      if (!canBackSwipe() || e.touches.length !== 1) return;
+      if (ignoreSwipeFrom(e.target)) return;
+      if (document.querySelector(".modal-backdrop:not([hidden])")) return;
+      const t = e.touches[0];
+      const p = toPortraitPoint(t.clientX, t.clientY);
+      swipe.startX = p.x;
+      swipe.startY = p.y;
+      swipe.dx = 0;
+      swipe.locked = null;
+      swipe.tracking = true;
+      swipe.width = views.clientWidth || 1;
+    },
+    { passive: true }
+  );
+
+  views.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!swipe.tracking || !canBackSwipe()) return;
+      const t = e.touches[0];
+      const p = toPortraitPoint(t.clientX, t.clientY);
+      const dx = p.x - swipe.startX;
+      const dy = p.y - swipe.startY;
+      if (!swipe.locked) {
+        if (Math.abs(dx) < 12 && Math.abs(dy) < 12) return;
+        swipe.locked = Math.abs(dx) > Math.abs(dy) * 1.2 ? "x" : "y";
+      }
+      if (swipe.locked !== "x") return;
+      // Only a right swipe goes back; left is ignored (no rubber-band the other way).
+      swipe.dx = dx > 0 ? dx : 0;
+      if (dx > 0) e.preventDefault();
+      paintDrag();
+    },
+    { passive: false }
+  );
+
+  const endSwipe = () => {
+    if (!swipe.tracking) return;
+    const commit =
+      canBackSwipe() &&
+      swipe.locked === "x" &&
+      swipe.dx > Math.max(64, swipe.width * 0.22);
+    swipe.tracking = false;
+    swipe.locked = null;
+    swipe.dx = 0;
+    if (commit) goBack();
+    else snapBack();
+  };
+  views.addEventListener("touchend", endSwipe);
+  views.addEventListener("touchcancel", endSwipe);
 }
 
 // ── Opening splash ─────────────────────────────────────────────────────────
@@ -4168,9 +4812,41 @@ function startSplash() {
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 
+if (/^https?:$/.test(window.location.protocol)) {
+  const manifest = document.createElement("link");
+  manifest.rel = "manifest";
+  manifest.href = "manifest.json";
+  document.head.appendChild(manifest);
+}
+
 loadMarketSnapshot(); // restore last prices/balances so UI doesn't flash $0
 seedPricesFromAssets();
+lockPortraitOrientation();
 wire();
 render();
 startSplash();
 refreshAll({ fromPull: false });
+
+function onOrientationChange() {
+  lockPortraitOrientation();
+  requestAnimationFrame(() => {
+    window.dispatchEvent(new Event("resize"));
+    if (nav.view === "home") syncHomePager(false);
+  });
+}
+window.addEventListener("orientationchange", onOrientationChange);
+if (screen.orientation && typeof screen.orientation.addEventListener === "function") {
+  screen.orientation.addEventListener("change", onOrientationChange);
+}
+window.matchMedia("(orientation: landscape)").addEventListener("change", onOrientationChange);
+document.addEventListener(
+  "pointerdown",
+  () => {
+    try {
+      screen.orientation?.lock?.("portrait").catch(() => {});
+    } catch {
+      /* ignore */
+    }
+  },
+  { capture: true, once: true }
+);
