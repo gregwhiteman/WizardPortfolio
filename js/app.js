@@ -2676,7 +2676,7 @@ function wizardCombatStats() {
   const totalUsd = rows.reduce((s, r) => s + (Number(r.usd) || 0), 0);
 
   if (!rows.length || !(totalUsd > 0)) {
-    return { attach: 0, shield: 10, power: 0, health: 75, todayChange: 0, totalGainLoss: 0, attachRaw: 0 };
+    return { attach: 0, shield: 10, power: 0, health: 100, todayChange: 0, totalGainLoss: 0, attachRaw: 0 };
   }
 
   let attachRaw = 0;
@@ -2701,11 +2701,12 @@ function wizardCombatStats() {
   }
 
   const attach = Math.max(0, Math.min(9, Math.floor(attachRaw)));
+ 
   return {
     attach,
     shield: 10 - attach,
     power: attachRaw / 9,
-    health: totalGainLoss + 75,
+    health: 100 + totalGainLoss,
     todayChange,
     totalGainLoss,
     attachRaw,
