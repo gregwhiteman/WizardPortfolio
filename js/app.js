@@ -2670,10 +2670,10 @@ function setHudBar(fillId, pctId, value, digits = 0) {
 /** Combat stats from the original Wizard Portfolio formulas. */
 function wizardCombatStats() {
   const { allocRows } = allPortfoliosTotals();
-  const { rows: plRows } = allPortfoliosCostTotals();
-  const plById = Object.fromEntries((plRows || []).map((r) => [r.coinId, r]));
+  const cost = allPortfoliosCostTotals();
   const rows = (allocRows || []).filter((r) => r.balance > 0 || r.usd > 0);
   const totalUsd = rows.reduce((s, r) => s + (Number(r.usd) || 0), 0);
+  const totalGainLoss = Number.isFinite(cost.plPct) ? cost.plPct : 0;
 
   if (!rows.length || !(totalUsd > 0)) {
     return { attach: 0, shield: 10, power: 0, health: 100, todayChange: 0, totalGainLoss: 0, attachRaw: 0 };
@@ -2681,7 +2681,6 @@ function wizardCombatStats() {
 
   let attachRaw = 0;
   let todayChange = 0;
-  let totalGainLoss = 0;
 
   for (const r of rows) {
     const coin = getAsset(r.coinId);
@@ -2695,13 +2694,10 @@ function wizardCombatStats() {
     if (Number.isFinite(ch) && coin.kind !== "cash" && coin.id !== "cash") {
       todayChange += allocFrac * ch;
     }
-
-    const plPct = plById[coin.id]?.plPct;
-    if (Number.isFinite(plPct)) totalGainLoss += allocFrac * plPct;
   }
 
   const attach = Math.max(0, Math.min(9, Math.floor(attachRaw)));
- 
+
   return {
     attach,
     shield: 10 - attach,
