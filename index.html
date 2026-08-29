@@ -92,24 +92,28 @@
         <div class="home-pager" id="home-pager">
           <div class="home-track" id="home-track">
             <div class="home-pane" id="home-pane-wizard" data-home-slide="0">
-              <div class="wizard-film-card tone-gold" id="wizard-film-card">
-                <video
-                  class="wizard-film"
-                  id="wizard-film"
-                  muted
-                  loop
-                  playsinline
-                  preload="none"
-                  hidden
-                  aria-label="The wizard"
-                ></video>
-                <img
-                  class="wizard-film-img"
-                  id="wizard-film-img"
-                  src="assets/images/19.PNG"
-                  alt="The wizard"
-                />
-                <div class="wizard-film-frame" aria-hidden="true"></div>
+              <div class="wizard-stage" aria-label="Wizard and wealth badges">
+                <div class="wizard-badges wizard-badges-left" id="wizard-badges-left"></div>
+                <div class="wizard-film-card tone-gold" id="wizard-film-card">
+                  <video
+                    class="wizard-film"
+                    id="wizard-film"
+                    muted
+                    loop
+                    playsinline
+                    preload="none"
+                    hidden
+                    aria-label="The wizard"
+                  ></video>
+                  <img
+                    class="wizard-film-img"
+                    id="wizard-film-img"
+                    src="assets/images/19.PNG"
+                    alt="The wizard"
+                  />
+                  <div class="wizard-film-frame" aria-hidden="true"></div>
+                </div>
+                <div class="wizard-badges wizard-badges-right" id="wizard-badges-right"></div>
               </div>
               <div class="wizard-pair" id="wizard-pair" aria-label="Power and Shield">0 / 10</div>
               <div class="wizard-hud" aria-label="Wizard vitals">
@@ -316,24 +320,28 @@
 
 
             <div class="home-pane" id="home-pane-future-wizard" data-home-slide="4">
-              <div class="wizard-film-card tone-gold" id="future-wizard-film-card">
-                <video
-                  class="wizard-film"
-                  id="future-wizard-film"
-                  muted
-                  loop
-                  playsinline
-                  preload="none"
-                  hidden
-                  aria-label="Future wizard"
-                ></video>
-                <img
-                  class="wizard-film-img"
-                  id="future-wizard-film-img"
-                  src="assets/images/19.PNG"
-                  alt="Future wizard"
-                />
-                <div class="wizard-film-frame" aria-hidden="true"></div>
+              <div class="wizard-stage" aria-label="Future wizard and wealth badges">
+                <div class="wizard-badges wizard-badges-left" id="future-wizard-badges-left"></div>
+                <div class="wizard-film-card tone-gold" id="future-wizard-film-card">
+                  <video
+                    class="wizard-film"
+                    id="future-wizard-film"
+                    muted
+                    loop
+                    playsinline
+                    preload="none"
+                    hidden
+                    aria-label="Future wizard"
+                  ></video>
+                  <img
+                    class="wizard-film-img"
+                    id="future-wizard-film-img"
+                    src="assets/images/19.PNG"
+                    alt="Future wizard"
+                  />
+                  <div class="wizard-film-frame" aria-hidden="true"></div>
+                </div>
+                <div class="wizard-badges wizard-badges-right" id="future-wizard-badges-right"></div>
               </div>
               <div class="wizard-pair" id="future-wizard-pair" aria-label="Power and Shield">0 / 10</div>
               <div class="wizard-hud" aria-label="Future wizard vitals">
@@ -687,7 +695,7 @@
           <button type="button" class="text-btn" id="btn-new-portfolio">+ Add</button>
         </div>
         <p class="section-sub home-sub">
-          Manage portfolios here. Toggle <strong>In total</strong> to include or exclude a portfolio from the hall hoard.
+          Manage portfolios here. Drag the handle to reorder. Toggle <strong>In total</strong> to include or exclude a portfolio from the hall hoard.
         </p>
         <div class="portfolio-list" id="portfolio-list"></div>
         <p class="empty-hint" id="settings-pf-empty" hidden>

@@ -7,6 +7,8 @@
 const STORAGE_KEY = "updown.app.v2";
 const LEGACY_KEY = "updown.addresses.v1";
 const SNAPSHOT_KEY = "updown.market.v1";
+const PRICE_HISTORY_MS = 24 * 3600 * 1000;
+const PRICE_HISTORY_MAX = 120;
 const NIGHT_POLICY_ID = "0691b2fecca1ac4f53cb6dfb00b7013e561d1f34403b957cbb5af1fa";
 const NIGHT_ASSET_NAME = "4e49474854";
 
@@ -432,14 +434,22 @@ function saveMarketSnapshot() {
         }
       }
     }
-    localStorage.setItem(
-      SNAPSHOT_KEY,
-      JSON.stringify({
-        prices,
-        balances,
-        savedAt: Date.now(),
-      })
-    );
+    const body = JSON.stringify({
+      prices,
+      balances,
+      savedAt: Date.now(),
+    });
+    try {
+      writeLocalStorage(SNAPSHOT_KEY, body);
+    } catch {
+      // Snapshot is secondary — never let it block the main store.
+      try {
+        localStorage.setItem(SNAPSHOT_KEY, body);
+      } catch {
+        /* ignore */
+      }
+    }
+    void idbSet(SNAPSHOT_KEY, body);
   } catch {
     /* quota / private mode */
   }
@@ -756,23 +766,131 @@ function defaultStore() {
   };
 }
 
+function normalizeLoadedStore(parsed) {
+  parsed.portfolios = (parsed.portfolios || []).map(normalizePortfolio);
+  parsed.exchangeFeePct = normalizeExchangeFeePct(parsed.exchangeFeePct);
+  parsed.lightningPower = normalizeLightningPower(parsed.lightningPower);
+  parsed.lightningStrikes = parsed.lightningStrikes !== false;
+  parsed.customAssets = normalizeCustomAssets(parsed.customAssets);
+  parsed.lastQuotes = parsed.lastQuotes && typeof parsed.lastQuotes === "object" ? parsed.lastQuotes : {};
+  parsed.priceHistory = normalizePriceHistory(parsed.priceHistory);
+  parsed.assetRisk = normalizeAssetRiskMap(parsed.assetRisk);
+  parsed.futurePrices = normalizeFuturePrices(parsed.futurePrices);
+  return parsed;
+}
+
+function probeLocalStorage() {
+  try {
+    const k = "updown.storage.probe";
+    const v = `ok-${Date.now()}`;
+    localStorage.setItem(k, v);
+    const ok = localStorage.getItem(k) === v;
+    localStorage.removeItem(k);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) {
+      reject(new Error("no indexedDB"));
+      return;
+    }
+    const req = indexedDB.open("wizard-portfolio-db", 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains("kv")) db.createObjectStore("kv");
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error || new Error("idb open failed"));
+  });
+}
+
+async function idbSet(key, value) {
+  try {
+    const db = await idbOpen();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction("kv", "readwrite");
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error("idb write failed"));
+      tx.objectStore("kv").put(value, key);
+    });
+    db.close();
+  } catch {
+    /* private mode / blocked */
+  }
+}
+
+async function idbGet(key) {
+  try {
+    const db = await idbOpen();
+    const value = await new Promise((resolve, reject) => {
+      const tx = db.transaction("kv", "readonly");
+      const req = tx.objectStore("kv").get(key);
+      req.onsuccess = () => resolve(req.result ?? null);
+      req.onerror = () => reject(req.error || new Error("idb read failed"));
+    });
+    db.close();
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+async function idbDel(key) {
+  try {
+    const db = await idbOpen();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction("kv", "readwrite");
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error("idb delete failed"));
+      tx.objectStore("kv").delete(key);
+    });
+    db.close();
+  } catch {
+    /* ignore */
+  }
+}
+
+function prunePriceHistoryForQuota() {
+  if (!store?.priceHistory || typeof store.priceHistory !== "object") return;
+  for (const id of Object.keys(store.priceHistory)) {
+    const pts = store.priceHistory[id];
+    if (!Array.isArray(pts)) {
+      delete store.priceHistory[id];
+      continue;
+    }
+    store.priceHistory[id] = pts.slice(-24);
+  }
+}
+
+let storageWriteOk = true;
+let storageWarned = false;
+
+function warnStorageOnce(msg) {
+  if (storageWarned) return;
+  storageWarned = true;
+  try {
+    toast(msg, "error");
+  } catch {
+    /* toast may not exist yet at boot */
+  }
+}
+
+function writeLocalStorage(key, payload) {
+  localStorage.setItem(key, payload);
+  const read = localStorage.getItem(key);
+  if (read !== payload) throw new Error("storage verify mismatch");
+}
+
 function loadStore() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed?.portfolios?.length) {
-        parsed.portfolios = parsed.portfolios.map(normalizePortfolio);
-        parsed.exchangeFeePct = normalizeExchangeFeePct(parsed.exchangeFeePct);
-        parsed.lightningPower = normalizeLightningPower(parsed.lightningPower);
-        parsed.lightningStrikes = parsed.lightningStrikes !== false;
-        parsed.customAssets = normalizeCustomAssets(parsed.customAssets);
-        parsed.lastQuotes = parsed.lastQuotes && typeof parsed.lastQuotes === "object" ? parsed.lastQuotes : {};
-        parsed.priceHistory = normalizePriceHistory(parsed.priceHistory);
-        parsed.assetRisk = normalizeAssetRiskMap(parsed.assetRisk);
-        parsed.futurePrices = normalizeFuturePrices(parsed.futurePrices);
-        return parsed;
-      }
+      if (parsed?.portfolios?.length) return normalizeLoadedStore(parsed);
     }
   } catch {
     /* fall through */
@@ -807,7 +925,11 @@ function loadStore() {
         activePortfolioId: id,
         portfolios: [{ id, name: "Main", createdAt: Date.now(), includeInTotal: true, holdings }],
       };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+      try {
+        writeLocalStorage(STORAGE_KEY, JSON.stringify(migrated));
+      } catch {
+        /* still return migrated in-memory */
+      }
       return migrated;
     }
   } catch {
@@ -815,12 +937,117 @@ function loadStore() {
   }
 
   const s = defaultStore();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+  try {
+    writeLocalStorage(STORAGE_KEY, JSON.stringify(s));
+  } catch {
+    storageWriteOk = false;
+  }
   return s;
 }
 
 function saveStore() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+  if (!store || typeof store !== "object") return;
+  const payload = () => JSON.stringify(store);
+  try {
+    const body = payload();
+    writeLocalStorage(STORAGE_KEY, body);
+    storageWriteOk = true;
+    void idbSet(STORAGE_KEY, body);
+    return;
+  } catch {
+    /* quota / private mode — prune chart history and retry once */
+  }
+  try {
+    prunePriceHistoryForQuota();
+    const body = payload();
+    writeLocalStorage(STORAGE_KEY, body);
+    storageWriteOk = true;
+    void idbSet(STORAGE_KEY, body);
+  } catch {
+    storageWriteOk = false;
+    void idbSet(STORAGE_KEY, payload());
+    warnStorageOnce("Could not save your hoard — storage is full or blocked on this browser");
+  }
+}
+
+function flushPersistence() {
+  saveStore();
+  saveMarketSnapshot();
+}
+
+async function requestPersistentStorage() {
+  try {
+    if (navigator.storage?.persist) await navigator.storage.persist();
+  } catch {
+    /* unsupported */
+  }
+}
+
+function storeRichness(s) {
+  if (!s?.portfolios?.length) return 0;
+  let score = s.portfolios.length * 10;
+  for (const pf of s.portfolios) {
+    const holdings = pf?.holdings || {};
+    for (const h of Object.values(holdings)) {
+      if (!h || typeof h !== "object") continue;
+      score += (Array.isArray(h.addresses) ? h.addresses.length : 0) * 3;
+      score += (Array.isArray(h.manual) ? h.manual.length : 0) * 3;
+      if (Number(h.costBasisUsd) > 0) score += 2;
+    }
+  }
+  score += Array.isArray(s.customAssets) ? s.customAssets.length * 4 : 0;
+  score += s.futurePrices ? Object.keys(s.futurePrices).length : 0;
+  score += s.assetRisk ? Object.keys(s.assetRisk).length : 0;
+  score += s.lastQuotes ? Math.min(20, Object.keys(s.lastQuotes).length) : 0;
+  return score;
+}
+
+/** Prefer localStorage; if it was wiped/reset, restore a richer IndexedDB backup. */
+async function hydrateStoreFromBackup() {
+  let lsRaw = null;
+  try {
+    lsRaw = localStorage.getItem(STORAGE_KEY);
+  } catch {
+    lsRaw = null;
+  }
+
+  const backup = await idbGet(STORAGE_KEY);
+  let backupParsed = null;
+  if (typeof backup === "string") {
+    try {
+      backupParsed = JSON.parse(backup);
+    } catch {
+      backupParsed = null;
+    }
+  }
+
+  let lsParsed = null;
+  if (lsRaw) {
+    try {
+      lsParsed = JSON.parse(lsRaw);
+    } catch {
+      lsParsed = null;
+    }
+  }
+
+  const lsScore = storeRichness(lsParsed);
+  const backupScore = storeRichness(backupParsed);
+
+  if (backupParsed?.portfolios?.length && backupScore > lsScore + 1) {
+    store = normalizeLoadedStore(backupParsed);
+    try {
+      writeLocalStorage(STORAGE_KEY, JSON.stringify(store));
+    } catch {
+      /* keep restored in-memory + IDB */
+    }
+    seedPricesFromAssets();
+    loadMarketSnapshot();
+    render();
+    toast("Restored your hoard from backup storage", "success");
+    return;
+  }
+
+  if (lsRaw) void idbSet(STORAGE_KEY, lsRaw);
 }
 
 function getPortfolio(id) {
@@ -1016,6 +1243,11 @@ function needsCorsProxy() {
   }
 }
 
+/** Hosts that never allow browser CORS — calling them directly only spams console errors. */
+function isCorsBlockedFinanceUrl(url) {
+  return /(?:query\d\.)?finance\.yahoo\.com|api\.nasdaq\.com/i.test(String(url || ""));
+}
+
 function proxyUrls(url) {
   return [
     `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
@@ -1024,7 +1256,25 @@ function proxyUrls(url) {
   ];
 }
 
-async function fetchJsonRaw(url, options = {}, timeoutMs = 15000) {
+/** Prefer the real upstream URL when the request goes through a CORS proxy. */
+function apiLinkForLog(url) {
+  try {
+    const u = String(url || "");
+    const m = u.match(/[?&](?:url|quest)=([^&]+)/i);
+    if (m) return decodeURIComponent(m[1]);
+  } catch {
+    /* keep original */
+  }
+  return String(url || "");
+}
+
+function logApiCall(ticker, url) {
+  const t = ticker != null && String(ticker).trim() ? String(ticker).trim() : "—";
+  console.log(`[API] ${t} → ${apiLinkForLog(url)}`);
+}
+
+async function fetchJsonRaw(url, options = {}, timeoutMs = 15000, ticker = "—") {
+  logApiCall(ticker, url);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -1050,11 +1300,11 @@ function unwrapJson(data) {
   return data;
 }
 
-async function fetchViaProxy(url, timeoutMs = 7000) {
+async function fetchViaProxy(url, timeoutMs = 7000, ticker = "—") {
   let lastErr;
   for (const u of proxyUrls(url)) {
     try {
-      return unwrapJson(await fetchJsonRaw(u, {}, timeoutMs));
+      return unwrapJson(await fetchJsonRaw(u, {}, timeoutMs, ticker));
     } catch (err) {
       lastErr = err;
     }
@@ -1062,35 +1312,46 @@ async function fetchViaProxy(url, timeoutMs = 7000) {
   throw lastErr || new Error("Network error");
 }
 
-async function fetchJson(url, options = {}, timeoutMs = 15000) {
+async function fetchJson(url, options = {}, timeoutMs = 15000, ticker = "—") {
   const method = String(options.method || "GET").toUpperCase();
   const canProxy = method === "GET" && !isProxyUrl(url);
   try {
-    return await fetchJsonRaw(url, options, timeoutMs);
+    return await fetchJsonRaw(url, options, timeoutMs, ticker);
   } catch (err) {
     const msg = String(err?.message || err);
     if (canProxy && /Failed to fetch|NetworkError|TypeError|aborted|HTTP 403|HTTP 429/i.test(msg)) {
-      return fetchViaProxy(url, Math.min(timeoutMs, 12000));
+      return fetchViaProxy(url, Math.min(timeoutMs, 12000), ticker);
     }
     throw err;
   }
 }
 
-async function fetchJsonCors(url, timeoutMs = 7000) {
-  if (!needsCorsProxy()) {
-    try {
-      return unwrapJson(await fetchJsonRaw(url, {}, timeoutMs));
-    } catch {
-      /* proxy next */
-    }
+async function fetchJsonCors(url, timeoutMs = 7000, ticker = "—") {
+  // Yahoo/Nasdaq reject browser Origin headers — always go through a proxy for them.
+  if (needsCorsProxy() || isCorsBlockedFinanceUrl(url)) {
+    return fetchViaProxy(url, timeoutMs, ticker);
   }
-  return fetchViaProxy(url, timeoutMs);
+  try {
+    return unwrapJson(await fetchJsonRaw(url, {}, timeoutMs, ticker));
+  } catch {
+    return fetchViaProxy(url, timeoutMs, ticker);
+  }
 }
 
-async function fetchJsonRace(urls, timeoutMs = 6000) {
-  return await Promise.any(
-    urls.map(async (url) => unwrapJson(await fetchJsonRaw(url, {}, timeoutMs)))
-  );
+/** Try URLs one at a time; stop at the first success. */
+async function fetchJsonSequential(urls, timeoutMs = 6000, ticker = "—") {
+  let lastErr;
+  for (const url of urls) {
+    try {
+      if (isCorsBlockedFinanceUrl(url)) {
+        return await fetchViaProxy(url, timeoutMs, ticker);
+      }
+      return unwrapJson(await fetchJsonRaw(url, {}, timeoutMs, ticker));
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error("Network error");
 }
 
 /** Live quote, else last shown/saved price so the hoard never blanks. */
@@ -1130,9 +1391,6 @@ function seedPricesFromAssets() {
     }
   }
 }
-
-const PRICE_HISTORY_MS = 24 * 3600 * 1000;
-const PRICE_HISTORY_MAX = 400;
 
 function normalizePriceHistory(raw) {
   const out = {};
@@ -1208,11 +1466,11 @@ function rememberQuotes(map) {
   if (changed) saveStore();
 }
 
-async function fetchJsonRetry(url, options = {}, attempts = 2) {
+async function fetchJsonRetry(url, options = {}, attempts = 2, ticker = "—") {
   let lastErr;
   for (let i = 0; i < attempts; i++) {
     try {
-      return await fetchJson(url, options);
+      return await fetchJson(url, options, 15000, ticker);
     } catch (err) {
       lastErr = err;
       const msg = String(err?.message || err);
@@ -1228,7 +1486,12 @@ function satsToCoin(sats, decimals) {
 }
 
 async function fetchBtcBalance(address) {
-  const data = await fetchJson(`https://blockstream.info/api/address/${encodeURIComponent(address)}`);
+  const data = await fetchJson(
+    `https://blockstream.info/api/address/${encodeURIComponent(address)}`,
+    {},
+    15000,
+    "BTC"
+  );
   const funded = data?.chain_stats?.funded_txo_sum ?? 0;
   const spent = data?.chain_stats?.spent_txo_sum ?? 0;
   const memFunded = data?.mempool_stats?.funded_txo_sum ?? 0;
@@ -1238,13 +1501,21 @@ async function fetchBtcBalance(address) {
 
 async function fetchLtcBalance(address) {
   try {
-    const data = await fetchJson(`https://litecoinspace.org/api/address/${encodeURIComponent(address)}`);
+    const data = await fetchJson(
+      `https://litecoinspace.org/api/address/${encodeURIComponent(address)}`,
+      {},
+      15000,
+      "LTC"
+    );
     const funded = data?.chain_stats?.funded_txo_sum ?? 0;
     const spent = data?.chain_stats?.spent_txo_sum ?? 0;
     return satsToCoin(funded - spent, 8);
   } catch {
     const data = await fetchJson(
-      `https://api.blockcypher.com/v1/ltc/main/addrs/${encodeURIComponent(address)}/balance`
+      `https://api.blockcypher.com/v1/ltc/main/addrs/${encodeURIComponent(address)}/balance`,
+      {},
+      15000,
+      "LTC"
     );
     return satsToCoin(data.balance ?? data.final_balance ?? 0, 8);
   }
@@ -1253,12 +1524,18 @@ async function fetchLtcBalance(address) {
 async function fetchDogeBalance(address) {
   try {
     const data = await fetchJson(
-      `https://api.blockcypher.com/v1/doge/main/addrs/${encodeURIComponent(address)}/balance`
+      `https://api.blockcypher.com/v1/doge/main/addrs/${encodeURIComponent(address)}/balance`,
+      {},
+      15000,
+      "DOGE"
     );
     return satsToCoin(data.balance ?? data.final_balance ?? 0, 8);
   } catch {
     const data = await fetchJson(
-      `https://dogechain.info/api/v1/address/balance/${encodeURIComponent(address)}`
+      `https://dogechain.info/api/v1/address/balance/${encodeURIComponent(address)}`,
+      {},
+      15000,
+      "DOGE"
     );
     if (data?.success === 0) throw new Error(data.error || "DOGE lookup failed");
     return Number(data.balance);
@@ -1266,14 +1543,19 @@ async function fetchDogeBalance(address) {
 }
 
 async function fetchXrpBalance(address) {
-  const data = await fetchJson("https://xrplcluster.com/", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      method: "account_info",
-      params: [{ account: address, ledger_index: "validated", strict: true }],
-    }),
-  });
+  const data = await fetchJson(
+    "https://xrplcluster.com/",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        method: "account_info",
+        params: [{ account: address, ledger_index: "validated", strict: true }],
+      }),
+    },
+    15000,
+    "XRP"
+  );
   if (data?.result?.error === "actNotFound") return 0;
   if (data?.result?.error) throw new Error(data.result.error_message || data.result.error);
   const drops = data?.result?.account_data?.Balance;
@@ -1283,7 +1565,12 @@ async function fetchXrpBalance(address) {
 
 async function fetchXlmBalance(address) {
   try {
-    const data = await fetchJson(`https://horizon.stellar.org/accounts/${encodeURIComponent(address)}`);
+    const data = await fetchJson(
+      `https://horizon.stellar.org/accounts/${encodeURIComponent(address)}`,
+      {},
+      15000,
+      "XLM"
+    );
     const native = (data.balances || []).find((b) => b.asset_type === "native");
     return Number(native?.balance ?? 0);
   } catch (err) {
@@ -1294,28 +1581,41 @@ async function fetchXlmBalance(address) {
 
 async function fetchHbarBalance(address) {
   const data = await fetchJsonRetry(
-    `https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${encodeURIComponent(address)}`
+    `https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${encodeURIComponent(address)}`,
+    {},
+    2,
+    "HBAR"
   );
   const tinybars = data?.balance?.balance ?? data?.balance ?? 0;
   return Number(tinybars) / 1e8;
 }
 
 async function fetchAdaBalance(address) {
-  const data = await fetchJsonRetry("https://api.koios.rest/api/v1/address_info", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ _addresses: [address] }),
-  });
+  const data = await fetchJsonRetry(
+    "https://api.koios.rest/api/v1/address_info",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ _addresses: [address] }),
+    },
+    2,
+    "ADA"
+  );
   if (!Array.isArray(data) || data.length === 0) return 0;
   return Number(data[0].balance ?? 0) / 1e6;
 }
 
 async function fetchNightBalance(address) {
-  const data = await fetchJsonRetry("https://api.koios.rest/api/v1/address_assets", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ _addresses: [address] }),
-  });
+  const data = await fetchJsonRetry(
+    "https://api.koios.rest/api/v1/address_assets",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ _addresses: [address] }),
+    },
+    2,
+    "NIGHT"
+  );
   if (!Array.isArray(data) || data.length === 0) return 0;
   let raw = 0;
   let decimals = 6;
@@ -1355,21 +1655,27 @@ async function fetchStockQuote(symbol) {
   const sym = String(symbol || "").trim();
   if (!sym) return null;
   const enc = encodeURIComponent(sym);
-  const yahoo = `https://query1.finance.yahoo.com/v8/finance/chart/${enc}?interval=1d&range=5d`;
-  const yahoo2 = `https://query2.finance.yahoo.com/v8/finance/chart/${enc}?interval=1d&range=5d`;
-  const proxied = `https://api.allorigins.win/raw?url=${encodeURIComponent(yahoo)}`;
-  try {
-    const data = await fetchJsonRace([yahoo, yahoo2, proxied], 5500);
-    const q = parseYahooChart(data);
-    if (q) return q;
-  } catch {
-    /* fall through */
+  // Yahoo does not allow browser CORS. Never fetch query1/query2 directly —
+  // that only produces console CORS errors. Use proxies, one at a time.
+  const yahooTargets = [
+    `https://query1.finance.yahoo.com/v8/finance/chart/${enc}?interval=1d&range=5d`,
+    `https://query2.finance.yahoo.com/v8/finance/chart/${enc}?interval=1d&range=5d`,
+  ];
+  for (const target of yahooTargets) {
+    try {
+      const data = await fetchViaProxy(target, 8000, sym);
+      const q = parseYahooChart(data);
+      if (q) return q;
+    } catch {
+      /* try next host/proxy */
+    }
   }
   const ns = encodeURIComponent(sym.replace(/-/g, "."));
   try {
-    const data = await fetchJsonCors(
+    const data = await fetchViaProxy(
       `https://api.nasdaq.com/api/quote/${ns}/info?assetclass=stocks`,
-      5000
+      6000,
+      sym
     );
     const q = parseNasdaqInfo(data);
     if (q) return q;
@@ -1381,7 +1687,8 @@ async function fetchStockQuote(symbol) {
 
 async function fetchCryptoQuote(asset) {
   if (!asset?.geckoId) return null;
-  const rows = await fetchGeckoMarkets([asset.geckoId]);
+  const ticker = String(asset.symbol || asset.geckoId || "—").toUpperCase();
+  const rows = await fetchGeckoMarkets([asset.geckoId], ticker);
   if (Array.isArray(rows) && rows.length) {
     const row = rows.find((r) => r.id === asset.geckoId) || rows[0];
     const usd = Number(row?.current_price);
@@ -1398,7 +1705,8 @@ async function fetchCryptoQuote(asset) {
     const data = await fetchJsonRaw(
       `https://api.coincap.io/v2/assets/${encodeURIComponent(capId)}`,
       {},
-      8000
+      8000,
+      ticker
     );
     const row = data?.data;
     const usd = Number(row?.priceUsd);
@@ -1470,16 +1778,28 @@ const GECKO_TO_COINCAP = {
   litecoin: "litecoin",
 };
 
-async function fetchGeckoMarkets(ids) {
+function tickerLabelForAssets(assets) {
+  const labels = (assets || [])
+    .map((a) => String(a?.symbol || a?.yahooSymbol || a?.geckoId || "").toUpperCase())
+    .filter(Boolean);
+  return labels.length ? [...new Set(labels)].join(",") : "—";
+}
+
+async function fetchGeckoMarkets(ids, ticker = null) {
+  const label =
+    ticker ||
+    tickerLabelForAssets(allAssets().filter((a) => ids.includes(a.geckoId))) ||
+    ids.join(",") ||
+    "—";
   const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids.join(",")}&order=market_cap_desc&per_page=50&page=1&sparkline=false&price_change_percentage=24h`;
   try {
-    const data = await fetchJsonRaw(url, {}, 12000);
+    const data = await fetchJsonRaw(url, {}, 12000, label);
     if (Array.isArray(data)) return data;
   } catch {
     /* proxy / coincap next */
   }
   try {
-    const data = await fetchViaProxy(url, 12000);
+    const data = await fetchViaProxy(url, 12000, label);
     if (Array.isArray(data)) return data;
   } catch {
     /* coincap next */
@@ -1494,11 +1814,13 @@ async function fetchCoinCapPrices(next, cryptos) {
     ),
   ];
   if (!ids.length) return;
+  const label = tickerLabelForAssets(cryptos);
   try {
     const data = await fetchJsonRaw(
       `https://api.coincap.io/v2/assets?ids=${encodeURIComponent(ids.join(","))}`,
       {},
-      10000
+      10000,
+      label
     );
     const rows = data?.data;
     if (!Array.isArray(rows)) return;
@@ -1526,7 +1848,8 @@ async function fetchCryptoPrices(next) {
   const ids = [...new Set(cryptos.map((c) => c.geckoId))];
   let gotGecko = false;
   for (const group of chunk(ids, 50)) {
-    const rows = await fetchGeckoMarkets(group);
+    const groupAssets = cryptos.filter((c) => group.includes(c.geckoId));
+    const rows = await fetchGeckoMarkets(group, tickerLabelForAssets(groupAssets));
     if (!rows) continue;
     gotGecko = true;
     const byGecko = Object.fromEntries(rows.map((r) => [r.id, r]));
@@ -1549,21 +1872,19 @@ async function fetchCryptoPrices(next) {
 async function fetchQuotedAssetPrices(next) {
   const quoted = allAssets().filter((a) => a.yahooSymbol && !a.geckoId);
   if (!quoted.length) return;
-  await runPool(
-    quoted.map((asset) => async () => {
-      try {
-        const q = await fetchStockQuote(asset.yahooSymbol);
-        if (q) {
-          next[asset.id] = q;
-          prices[asset.id] = q;
-          freshQuoteIds.add(asset.id);
-        }
-      } catch {
-        /* keep last quote */
+  // One stock/metal quote at a time to avoid stampedes and rate limits.
+  for (const asset of quoted) {
+    try {
+      const q = await fetchStockQuote(asset.yahooSymbol);
+      if (q) {
+        next[asset.id] = q;
+        prices[asset.id] = q;
+        freshQuoteIds.add(asset.id);
       }
-    }),
-    4
-  );
+    } catch {
+      /* keep last quote */
+    }
+  }
 }
 
 async function fetchPrices() {
@@ -1575,7 +1896,8 @@ async function fetchPrices() {
     if (q && Number.isFinite(q.usd) && !next[id]) next[id] = q;
   }
 
-  await Promise.all([fetchCryptoPrices(next), fetchQuotedAssetPrices(next)]);
+  await fetchCryptoPrices(next);
+  await fetchQuotedAssetPrices(next);
 
   prices = next;
   rememberQuotes(next);
@@ -2790,6 +3112,100 @@ function setLedgerCell(id, text, cls) {
   if (cls) el.classList.add(cls);
 }
 
+const WEALTH_BADGES = [
+  {
+    id: "1k",
+    min: 1_000,
+    mark: "1K",
+    name: "Thousandaire",
+    label: "Thousandaire",
+    tier: "tier-1k",
+    side: "left",
+  },
+  {
+    id: "100k",
+    min: 100_000,
+    mark: "100K",
+    name: "HundredThousandaire",
+    label: "Hundred\nThousandaire",
+    tier: "tier-100k",
+    side: "left",
+  },
+  {
+    id: "1m",
+    min: 1_000_000,
+    mark: "1M",
+    name: "Millionaire",
+    label: "Millionaire",
+    tier: "tier-1m",
+    side: "right",
+  },
+  {
+    id: "1b",
+    min: 1_000_000_000,
+    mark: "1B",
+    name: "Billionaire",
+    label: "Billionaire",
+    tier: "tier-1b",
+    side: "right",
+  },
+];
+
+function earnedWealthBadges(totalUsd) {
+  const n = Number(totalUsd);
+  if (!Number.isFinite(n) || n < WEALTH_BADGES[0].min) return [];
+  return WEALTH_BADGES.filter((b) => n >= b.min);
+}
+
+function renderWealthBadges(leftId, rightId, totalUsd) {
+  const left = document.getElementById(leftId);
+  const right = document.getElementById(rightId);
+  if (!left || !right) return;
+  left.innerHTML = "";
+  right.innerHTML = "";
+  const page = leftId.includes("future") ? "f" : "w";
+  const earned = earnedWealthBadges(totalUsd);
+  for (const b of earned) {
+    const el = document.createElement("div");
+    el.className = `wealth-badge ${b.tier}`;
+    el.title = `${b.name} · $${b.min.toLocaleString("en-US")}+`;
+    el.setAttribute("aria-label", b.name);
+
+    const gid = `wb-${b.id}-${b.side[0]}-${page}`;
+    const shield = document.createElement("span");
+    shield.className = "wealth-badge-shield";
+    shield.setAttribute("aria-hidden", "true");
+    shield.innerHTML = `
+      <svg class="wealth-badge-svg" viewBox="0 0 40 48" focusable="false">
+        <defs>
+          <linearGradient id="${gid}-metal" x1="8" y1="2" x2="32" y2="46" gradientUnits="userSpaceOnUse">
+            <stop class="wb-stop-hi" offset="0%"/>
+            <stop class="wb-stop-mid" offset="45%"/>
+            <stop class="wb-stop-lo" offset="100%"/>
+          </linearGradient>
+          <linearGradient id="${gid}-face" x1="20" y1="4" x2="20" y2="44" gradientUnits="userSpaceOnUse">
+            <stop class="wb-face-hi" offset="0%"/>
+            <stop class="wb-face-lo" offset="100%"/>
+          </linearGradient>
+        </defs>
+        <path class="wealth-badge-rim" fill="url(#${gid}-metal)" d="M20 1.5 37.2 8.1v18.4c0 10.6-8.4 18-17.2 21C10.2 44.5 2.8 37.1 2.8 26.5V8.1L20 1.5Z"/>
+        <path class="wealth-badge-face" fill="url(#${gid}-face)" d="M20 4.4 34 9.8v16.2c0 8.7-6.7 14.9-14 17.5C12.7 40.9 6 34.7 6 26V9.8L20 4.4Z"/>
+      </svg>
+    `;
+    const mark = document.createElement("span");
+    mark.className = "wealth-badge-mark";
+    mark.textContent = b.mark;
+    shield.appendChild(mark);
+
+    const name = document.createElement("span");
+    name.className = "wealth-badge-name";
+    name.textContent = b.label;
+
+    el.append(shield, name);
+    (b.side === "right" ? right : left).appendChild(el);
+  }
+}
+
 function renderWizardHud() {
   const combat = wizardCombatStats();
   setHudBar("wizard-shield-fill", "wizard-shield-pct", (combat.shield / 10) * 100, 0);
@@ -2799,8 +3215,10 @@ function renderWizardHud() {
   if (pair) pair.textContent = `${combat.attach} / ${combat.shield}`;
   updateWizardFilmClip(combat);
 
-  const { changeUsd, changePct, allocRows } = allPortfoliosTotals();
+  const { totalUsd, changeUsd, changePct, allocRows } = allPortfoliosTotals();
   const cost = allPortfoliosCostTotals();
+
+  renderWealthBadges("wizard-badges-left", "wizard-badges-right", totalUsd);
 
   const todayPct = formatPct(changePct);
   setLedgerCell("wizard-today-pct", todayPct.text, todayPct.cls);
@@ -2882,6 +3300,9 @@ function renderFutureWizardHud() {
   const pair = document.getElementById("future-wizard-pair");
   if (pair) pair.textContent = `${combat.attach} / ${combat.shield}`;
   updateWizardMedia("future", combat);
+
+  const futureTotal = crystalBallTotals().totalFuture;
+  renderWealthBadges("future-wizard-badges-left", "future-wizard-badges-right", futureTotal);
 
   const todayPct = formatPct(combat.todayChange);
   setLedgerCell("future-wizard-today-pct", todayPct.text, todayPct.cls);
@@ -3162,20 +3583,26 @@ function renderSettings() {
     const pct = formatPct(cp);
     const card = document.createElement("div");
     card.className = "pf-card" + (included ? "" : " pf-card-excluded");
+    card.dataset.pfId = pf.id;
 
     card.innerHTML = `
-      <button type="button" class="pf-card-main" data-open>
-        <div class="pf-card-top">
-          <div class="pf-card-text">
-            <div class="pf-card-name">${escapeHtml(pf.name)}</div>
-            <div class="pf-card-meta">${assets} asset${assets === 1 ? "" : "s"} · ${sourceCount} source${sourceCount === 1 ? "" : "s"}</div>
+      <div class="pf-card-body">
+        <button type="button" class="pf-card-handle" aria-label="Drag to reorder ${escapeHtml(pf.name)}" title="Drag to reorder">
+          <span class="pf-card-handle-dots" aria-hidden="true"></span>
+        </button>
+        <button type="button" class="pf-card-main" data-open>
+          <div class="pf-card-top">
+            <div class="pf-card-text">
+              <div class="pf-card-name">${escapeHtml(pf.name)}</div>
+              <div class="pf-card-meta">${assets} asset${assets === 1 ? "" : "s"} · ${sourceCount} source${sourceCount === 1 ? "" : "s"}</div>
+            </div>
+            <div class="pf-card-figures">
+              <div class="pf-card-value">${formatUsd(v)}</div>
+              <div class="pf-card-change ${pct.cls}">${pct.text}</div>
+            </div>
           </div>
-          <div class="pf-card-figures">
-            <div class="pf-card-value">${formatUsd(v)}</div>
-            <div class="pf-card-change ${pct.cls}">${pct.text}</div>
-          </div>
-        </div>
-      </button>
+        </button>
+      </div>
       <div class="pf-card-toggle-row">
         <span class="pf-toggle-label">${included ? "In total" : "Excluded"}</span>
         <label class="switch" title="Include in the hall hoard">
@@ -3202,6 +3629,99 @@ function renderSettings() {
     card.querySelector(".switch").addEventListener("click", (e) => e.stopPropagation());
     list.appendChild(card);
   }
+}
+
+function commitPortfolioListOrder(list) {
+  if (!list || !store?.portfolios?.length) return false;
+  const ids = [...list.querySelectorAll(".pf-card[data-pf-id]")].map((el) => el.dataset.pfId);
+  if (!ids.length) return false;
+  const byId = Object.fromEntries(store.portfolios.map((p) => [p.id, p]));
+  const next = [];
+  for (const id of ids) {
+    const pf = byId[id];
+    if (pf) next.push(pf);
+  }
+  for (const pf of store.portfolios) {
+    if (!ids.includes(pf.id)) next.push(pf);
+  }
+  if (next.length !== store.portfolios.length) return false;
+  let changed = false;
+  for (let i = 0; i < next.length; i++) {
+    if (next[i].id !== store.portfolios[i].id) {
+      changed = true;
+      break;
+    }
+  }
+  if (!changed) return false;
+  store.portfolios = next;
+  saveStore();
+  return true;
+}
+
+function wirePortfolioListReorder() {
+  const list = document.getElementById("portfolio-list");
+  if (!list || list.dataset.reorderWired === "1") return;
+  list.dataset.reorderWired = "1";
+
+  let drag = null;
+
+  list.addEventListener("pointerdown", (e) => {
+    const handle = e.target.closest(".pf-card-handle");
+    if (!handle || !list.contains(handle)) return;
+    if (e.button != null && e.button !== 0) return;
+    const card = handle.closest(".pf-card");
+    if (!card || list.querySelectorAll(".pf-card").length < 2) return;
+    e.preventDefault();
+    try {
+      handle.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    drag = {
+      card,
+      handle,
+      pointerId: e.pointerId,
+      startY: e.clientY,
+      moved: false,
+    };
+    card.classList.add("is-dragging");
+    list.classList.add("is-reordering");
+  });
+
+  list.addEventListener("pointermove", (e) => {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    if (Math.abs(e.clientY - drag.startY) > 4) drag.moved = true;
+    const others = [...list.querySelectorAll(".pf-card")].filter((c) => c !== drag.card);
+    let target = null;
+    for (const other of others) {
+      const r = other.getBoundingClientRect();
+      if (e.clientY < r.top + r.height / 2) {
+        target = other;
+        break;
+      }
+    }
+    if (target) list.insertBefore(drag.card, target);
+    else list.appendChild(drag.card);
+  });
+
+  const endDrag = (e) => {
+    if (!drag || (e.pointerId != null && e.pointerId !== drag.pointerId)) return;
+    const { card, handle, moved } = drag;
+    drag = null;
+    card.classList.remove("is-dragging");
+    list.classList.remove("is-reordering");
+    try {
+      if (handle?.hasPointerCapture?.(e.pointerId)) handle.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    if (moved && commitPortfolioListOrder(list)) {
+      toast("Portfolio order saved");
+    }
+  };
+
+  list.addEventListener("pointerup", endDrag);
+  list.addEventListener("pointercancel", endDrag);
 }
 
 function renderRisk() {
@@ -3619,8 +4139,12 @@ function renderAddCoin() {
 }
 
 async function searchCrypto(query) {
+  const q = String(query || "").trim();
   const data = await fetchJson(
-    `https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(query)}`
+    `https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(query)}`,
+    {},
+    15000,
+    q || "search"
   );
   return (data.coins || []).slice(0, 8).map((c) => ({
     kind: "crypto",
@@ -3632,8 +4156,11 @@ async function searchCrypto(query) {
 }
 
 async function searchStocks(query) {
+  const q = String(query || "").trim();
   const data = await fetchJsonCors(
-    `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0`
+    `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0`,
+    7000,
+    q || "search"
   );
   const allowed = new Set(["EQUITY", "ETF", "INDEX", "MUTUALFUND"]);
   return (data.quotes || [])
@@ -4064,9 +4591,15 @@ function importData(file) {
 
 function wipeAll() {
   if (!confirm("Delete all portfolios and local data?")) return;
-  localStorage.removeItem(STORAGE_KEY);
-  localStorage.removeItem(LEGACY_KEY);
-  localStorage.removeItem(SNAPSHOT_KEY);
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(LEGACY_KEY);
+    localStorage.removeItem(SNAPSHOT_KEY);
+  } catch {
+    /* ignore */
+  }
+  void idbDel(STORAGE_KEY);
+  void idbDel(SNAPSHOT_KEY);
   store = defaultStore();
   saveStore();
   balanceCache = {};
@@ -4975,6 +5508,7 @@ function wire() {
   wireHomePager();
   wireKirlian();
   wireHoldingsSort();
+  wirePortfolioListReorder();
 
   document.getElementById("home-chart-retry")?.addEventListener("click", () => {
     updateHomeChart(null, { force: true });
@@ -5360,6 +5894,30 @@ wire();
 render();
 startSplash();
 refreshAll({ fromPull: false });
+
+if (!probeLocalStorage()) {
+  storageWriteOk = false;
+  setTimeout(() => {
+    warnStorageOnce("This browser is blocking storage — Add to Home Screen or leave Private Browsing to keep your hoard");
+  }, 1200);
+} else {
+  void requestPersistentStorage();
+  void hydrateStoreFromBackup();
+}
+
+const flushPersistenceSoon = () => {
+  try {
+    flushPersistence();
+  } catch {
+    /* ignore */
+  }
+};
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") flushPersistenceSoon();
+});
+window.addEventListener("pagehide", flushPersistenceSoon);
+window.addEventListener("beforeunload", flushPersistenceSoon);
+window.addEventListener("freeze", flushPersistenceSoon);
 
 function onOrientationChange() {
   lockPortraitOrientation();

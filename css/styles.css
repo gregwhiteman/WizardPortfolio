@@ -453,14 +453,170 @@ button {
 }
 
 /* ── Wizard pane (swipe right from the hoard) ── */
+.wizard-stage {
+  display: grid;
+  grid-template-columns: minmax(64px, 1fr) auto minmax(64px, 1fr);
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 440px;
+  margin: 0 auto;
+}
+
+.wizard-badges {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 44px;
+  min-height: 0;
+}
+
+.wizard-badges:empty {
+  visibility: hidden;
+}
+
+.wealth-badge {
+  --badge: #c0c6ce;
+  --badge-deep: #6a7078;
+  --badge-hi: #eef2f6;
+  --badge-glow: rgba(180, 190, 200, 0.4);
+  --badge-face-top: #2a3340;
+  --badge-face-bot: #0c1218;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  width: 64px;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  text-align: center;
+  line-height: 1.05;
+}
+
+.wealth-badge-shield {
+  position: relative;
+  display: block;
+  width: 44px;
+  height: 52px;
+  filter: drop-shadow(0 0 7px var(--badge-glow)) drop-shadow(0 3px 4px rgba(0, 0, 0, 0.45));
+}
+
+.wealth-badge-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.wealth-badge .wb-stop-hi {
+  stop-color: var(--badge-hi);
+}
+
+.wealth-badge .wb-stop-mid {
+  stop-color: var(--badge);
+}
+
+.wealth-badge .wb-stop-lo {
+  stop-color: var(--badge-deep);
+}
+
+.wealth-badge .wb-face-hi {
+  stop-color: var(--badge-face-top);
+}
+
+.wealth-badge .wb-face-lo {
+  stop-color: var(--badge-face-bot);
+}
+
+.wealth-badge-mark {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  padding-bottom: 7px;
+  font-family: var(--display);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--badge);
+  text-shadow:
+    0 0 8px var(--badge-glow),
+    0 1px 2px rgba(0, 0, 0, 0.75);
+  pointer-events: none;
+}
+
+.wealth-badge-name {
+  font-family: var(--display);
+  font-size: 0.46rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  max-width: 64px;
+  white-space: pre-line;
+  line-height: 1.15;
+}
+
+/* Steel — 1K (left) */
+.wealth-badge.tier-1k {
+  --badge: #7a828c;
+  --badge-deep: #3a4048;
+  --badge-hi: #a8b0ba;
+  --badge-glow: rgba(100, 110, 120, 0.45);
+  --badge-face-top: #262c34;
+  --badge-face-bot: #0c1016;
+}
+
+/* Copper — 100K (left, below steel) */
+.wealth-badge.tier-100k {
+  --badge: #d08a55;
+  --badge-deep: #7a3f1c;
+  --badge-hi: #f0c19a;
+  --badge-glow: rgba(208, 138, 85, 0.5);
+  --badge-face-top: #3a281c;
+  --badge-face-bot: #160e0a;
+}
+
+/* Silver — 1M (right) */
+.wealth-badge.tier-1m {
+  --badge: #e8eef4;
+  --badge-deep: #7a8694;
+  --badge-hi: #ffffff;
+  --badge-glow: rgba(220, 230, 240, 0.55);
+  --badge-face-top: #343c48;
+  --badge-face-bot: #12161d;
+}
+
+/* Gold — 1B (right, below silver) */
+.wealth-badge.tier-1b {
+  --badge: #f0d060;
+  --badge-deep: #a88420;
+  --badge-hi: #fff1b0;
+  --badge-glow: rgba(240, 208, 96, 0.65);
+  --badge-face-top: #3a3420;
+  --badge-face-bot: #14100a;
+}
+
+.wealth-badge.tier-1b .wealth-badge-shield {
+  filter: drop-shadow(0 0 10px var(--badge-glow)) drop-shadow(0 3px 5px rgba(0, 0, 0, 0.5));
+}
+
+.wealth-badge.tier-1b .wealth-badge-mark {
+  font-size: 0.74rem;
+}
+
 .wizard-film-card {
   --frame: #d4af37;
   --frame-glow: rgba(212, 175, 55, 0.45);
   --frame-shift: 0deg;
   position: relative;
   overflow: hidden;
-  width: min(176px, 46%);
-  margin: 0 auto;
+  width: min(176px, calc(100vw - 168px));
+  margin: 0;
   aspect-ratio: 2 / 3;
   border: 3px solid var(--frame);
   border-radius: 18px;
@@ -468,6 +624,36 @@ button {
   box-shadow:
     0 0 16px var(--frame-glow),
     0 8px 20px rgba(0, 0, 0, 0.4);
+  justify-self: center;
+}
+
+@media (max-width: 360px) {
+  .wizard-stage {
+    gap: 10px;
+    grid-template-columns: minmax(52px, 1fr) auto minmax(52px, 1fr);
+  }
+
+  .wizard-badges {
+    gap: 32px;
+  }
+
+  .wealth-badge {
+    width: 56px;
+  }
+
+  .wealth-badge-shield {
+    width: 38px;
+    height: 46px;
+  }
+
+  .wealth-badge-mark {
+    font-size: 0.62rem;
+  }
+
+  .wealth-badge-name {
+    font-size: 0.4rem;
+    max-width: 56px;
+  }
 }
 
 .wizard-film-card.tone-gold {
@@ -1156,6 +1342,11 @@ button {
   gap: 8px;
 }
 
+.portfolio-list.is-reordering {
+  cursor: grabbing;
+  user-select: none;
+}
+
 .pf-card {
   display: flex;
   flex-direction: column;
@@ -1164,7 +1355,15 @@ button {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
-  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+.pf-card.is-dragging {
+  opacity: 0.72;
+  border-color: var(--accent);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(212, 175, 55, 0.35);
+  transform: scale(1.01);
+  z-index: 2;
 }
 
 .pf-card-excluded {
@@ -1172,9 +1371,46 @@ button {
   border-style: dashed;
 }
 
+.pf-card-body {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.pf-card-handle {
+  flex: 0 0 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--text-muted);
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.pf-card-handle:active,
+.portfolio-list.is-reordering .pf-card-handle {
+  cursor: grabbing;
+}
+
+.pf-card-handle-dots {
+  width: 14px;
+  height: 18px;
+  background-image: radial-gradient(circle, currentColor 1.35px, transparent 1.45px);
+  background-size: 6px 6px;
+  background-position: 1px 1px;
+  opacity: 0.7;
+}
+
 .pf-card-main {
   display: block;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
   padding: 14px 14px 10px;
   text-align: left;
   background: transparent;
