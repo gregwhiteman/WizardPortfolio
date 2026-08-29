@@ -348,17 +348,13 @@ let manualPriceCoinId = null;
 let prices = {};
 /** Asset ids that received a live quote on the last refresh. Missing = shown from storage. */
 let freshQuoteIds = new Set(["cash"]);
+/** Asset ids currently being quoted from the network (spinning white ring). */
+const quotingIds = new Set();
 
-/**
- * Cached CoinGecko market charts: `${coinId}:${days}` → { fetchedAt, points }
- * @type {Record<string, { fetchedAt: number, points: [number, number][] }>}
- */
-let chartCache = {};
-
-/** Selected dashboard chart range (CoinGecko days param). */
+/** Selected dashboard chart range label. */
 let chartRange = "1";
 
-/** Last holdings used for the chart (for range tab / retry reloads). */
+/** Last holdings used for the chart (for retry reloads). */
 let lastChartHoldings = [];
 
 /**
@@ -367,18 +363,18 @@ let lastChartHoldings = [];
  */
 let balanceCache = {};
 
-/** Chart fetch in progress (for global header spinner). */
-let chartLoading = false;
-
 /** Home pager: 0 wizard · 1 hoard (default) · 2 the reckoning. Swipe right from the hoard for the wizard. */
 const HOME_SLIDE_WIZARD = 0;
 const HOME_SLIDE_HOARD = 1;
 const HOME_SLIDE_PL = 2;
-const HOME_SLIDE_MAX = 2;
+const HOME_SLIDE_CRYSTAL = 3;
+const HOME_SLIDE_FUTURE_WIZARD = 4;
+const HOME_SLIDE_MAX = 4;
 let homeSlide = HOME_SLIDE_HOARD;
 
 const hoardSort = { key: "value", dir: "desc" };
 const plSort = { key: "pl", dir: "desc" };
+const crystalSort = { key: "value", dir: "desc" };
 
 /**
  * Load last-known prices + on-chain balances so the UI never flashes $0 on refresh.
@@ -460,13 +456,9 @@ function anyBalancesLoading() {
   return false;
 }
 
-/** Show/hide the global top-right spinner while any network work is in flight. */
 function updateGlobalSpinner() {
-  const el = document.getElementById("global-spinner");
-  if (!el) return;
-  const busy = refreshInFlight || chartLoading || anyBalancesLoading();
-  el.hidden = !busy;
-  el.setAttribute("aria-hidden", busy ? "false" : "true");
+  // Top-right spinner removed; keep body flag for any CSS that still keys off it.
+  const busy = refreshInFlight || anyBalancesLoading();
   document.body.classList.toggle("is-data-loading", busy);
 }
 
@@ -664,6 +656,40 @@ function getAssetRisk(id) {
   return Number.isInteger(n) && n >= 1 && n <= 9 ? n : null;
 }
 
+function normalizeFuturePrices(raw) {
+  const out = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [id, val] of Object.entries(raw)) {
+    const n = Number(val);
+    if (!id || !Number.isFinite(n) || n <= 0) continue;
+    out[id] = n;
+  }
+  return out;
+}
+
+/** Saved foresight price, else live quote. */
+function getFuturePrice(id) {
+  const saved = store.futurePrices?.[id];
+  if (Number.isFinite(saved) && saved > 0) return saved;
+  return getQuote(id)?.usd ?? null;
+}
+
+function setFuturePrice(id, raw) {
+  if (!id) return null;
+  if (!store.futurePrices || typeof store.futurePrices !== "object") store.futurePrices = {};
+  const cleaned = String(raw ?? "").replace(/,/g, "").trim();
+  if (!cleaned) {
+    delete store.futurePrices[id];
+    saveStore();
+    return null;
+  }
+  const n = Number(cleaned);
+  if (!Number.isFinite(n) || n <= 0) return getFuturePrice(id);
+  store.futurePrices[id] = roundPriceInput(n);
+  saveStore();
+  return store.futurePrices[id];
+}
+
 function setAssetRisk(id, raw) {
   if (!id) return null;
   if (!store.assetRisk || typeof store.assetRisk !== "object") store.assetRisk = {};
@@ -715,7 +741,9 @@ function defaultStore() {
     lightningStrikes: true,
     customAssets: [],
     lastQuotes: {},
+    priceHistory: {},
     assetRisk: {},
+    futurePrices: {},
     portfolios: [
       {
         id,
@@ -740,7 +768,9 @@ function loadStore() {
         parsed.lightningStrikes = parsed.lightningStrikes !== false;
         parsed.customAssets = normalizeCustomAssets(parsed.customAssets);
         parsed.lastQuotes = parsed.lastQuotes && typeof parsed.lastQuotes === "object" ? parsed.lastQuotes : {};
+        parsed.priceHistory = normalizePriceHistory(parsed.priceHistory);
         parsed.assetRisk = normalizeAssetRiskMap(parsed.assetRisk);
+        parsed.futurePrices = normalizeFuturePrices(parsed.futurePrices);
         return parsed;
       }
     }
@@ -770,7 +800,9 @@ function loadStore() {
         lightningStrikes: true,
         customAssets: [],
         lastQuotes: {},
+        priceHistory: {},
         assetRisk: {},
+        futurePrices: {},
         version: 2,
         activePortfolioId: id,
         portfolios: [{ id, name: "Main", createdAt: Date.now(), includeInTotal: true, holdings }],
@@ -869,12 +901,28 @@ function iconContrast(hex) {
 /** HTML for a coin avatar using official brand color + symbol. */
 function isQuoteStale(id) {
   if (!id || id === "cash") return false;
+  if (quotingIds.has(id)) return false;
   return !freshQuoteIds.has(id);
 }
 
+function isQuoteLoading(id) {
+  return !!id && quotingIds.has(id);
+}
+
+function paintAvatarQuoteState(id) {
+  if (!id) return;
+  const loading = isQuoteLoading(id);
+  const stale = isQuoteStale(id);
+  document.querySelectorAll(`[data-open-tv="${CSS.escape(id)}"]`).forEach((el) => {
+    el.classList.toggle("quote-loading", loading);
+    el.classList.toggle("stale-quote", !loading && stale);
+  });
+}
+
 function coinAvatarHtml(coin, { lg = false } = {}) {
-  const stale = isQuoteStale(coin?.id) ? " stale-quote" : "";
-  const cls = `${lg ? "coin-avatar lg" : "coin-avatar"}${stale}`;
+  const loading = isQuoteLoading(coin?.id) ? " quote-loading" : "";
+  const stale = !loading && isQuoteStale(coin?.id) ? " stale-quote" : "";
+  const cls = `${lg ? "coin-avatar lg" : "coin-avatar"}${stale}${loading}`;
   const bg = coin?.color || "#d4af37";
   const fg = iconContrast(bg);
   const id = coin?.id || "";
@@ -896,6 +944,7 @@ function setCoinAvatarEl(el, coin) {
   el.setAttribute("tabindex", "0");
   el.setAttribute("aria-label", `Open ${coin.symbol} chart`);
   el.title = `Open ${coin.symbol} chart`;
+  el.classList.toggle("quote-loading", isQuoteLoading(coin.id));
   el.classList.toggle("stale-quote", isQuoteStale(coin.id));
 }
 
@@ -931,11 +980,11 @@ function tradingViewEmbedUrl(symbol) {
     locale: "en",
     toolbarbg: "0a101c",
     hideideas: "1",
-    hidesidetoolbar: "1",
+    hidesidetoolbar: "0",
     symboledit: "1",
     saveimage: "0",
     withdateranges: "1",
-    hidevolume: "0",
+    hidevolume: "1",
     autosize: "1",
     backgroundColor: "#0a101c",
     gridColor: "rgba(212,175,55,0.08)",
@@ -1082,18 +1131,66 @@ function seedPricesFromAssets() {
   }
 }
 
+const PRICE_HISTORY_MS = 24 * 3600 * 1000;
+const PRICE_HISTORY_MAX = 400;
+
+function normalizePriceHistory(raw) {
+  const out = {};
+  if (!raw || typeof raw !== "object") return out;
+  const since = Date.now() - PRICE_HISTORY_MS;
+  for (const [id, pts] of Object.entries(raw)) {
+    if (!id || !Array.isArray(pts)) continue;
+    const cleaned = pts
+      .map((p) => ({ t: Number(p?.t), usd: Number(p?.usd) }))
+      .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.usd) && p.t >= since)
+      .sort((a, b) => a.t - b.t);
+    if (cleaned.length) out[id] = cleaned.slice(-PRICE_HISTORY_MAX);
+  }
+  return out;
+}
+
+function isHeldAsset(id) {
+  if (!id || id === "cash") return false;
+  for (const pf of store.portfolios || []) {
+    if (portfolioHasCoin(pf, id)) return true;
+  }
+  return false;
+}
+
+/** Append a live quote to the 24h history used by the hall chart. */
+function recordPriceHistory(id, usd) {
+  if (!id || id === "cash" || !isHeldAsset(id)) return false;
+  const px = Number(usd);
+  if (!Number.isFinite(px)) return false;
+  if (!store.priceHistory || typeof store.priceHistory !== "object") store.priceHistory = {};
+  const now = Date.now();
+  const since = now - PRICE_HISTORY_MS;
+  let pts = Array.isArray(store.priceHistory[id]) ? store.priceHistory[id] : [];
+  pts = pts.filter((p) => Number.isFinite(p?.t) && Number.isFinite(p?.usd) && p.t >= since);
+  const last = pts[pts.length - 1];
+  // Skip near-duplicate ticks to keep storage lean
+  if (last && now - last.t < 20_000 && Math.abs(last.usd - px) < 1e-12) return false;
+  pts.push({ t: now, usd: px });
+  if (pts.length > PRICE_HISTORY_MAX) pts = pts.slice(-PRICE_HISTORY_MAX);
+  store.priceHistory[id] = pts;
+  return true;
+}
+
 function rememberQuotes(map) {
   if (!map) return;
   if (!store.lastQuotes || typeof store.lastQuotes !== "object") store.lastQuotes = {};
   let changed = false;
   for (const [id, q] of Object.entries(map)) {
     if (!q || !Number.isFinite(Number(q.usd))) continue;
+    const usd = Number(q.usd);
     store.lastQuotes[id] = {
-      usd: Number(q.usd),
+      usd,
       change24h: Number(q.change24h) || 0,
       at: Date.now(),
     };
     changed = true;
+    // Only store history for quotes that just arrived from the network
+    if (freshQuoteIds.has(id) && recordPriceHistory(id, usd)) changed = true;
   }
   if (Array.isArray(store.customAssets) && store.customAssets.length) {
     store.customAssets = store.customAssets.map((a) => {
@@ -1282,25 +1379,84 @@ async function fetchStockQuote(symbol) {
   return null;
 }
 
+async function fetchCryptoQuote(asset) {
+  if (!asset?.geckoId) return null;
+  const rows = await fetchGeckoMarkets([asset.geckoId]);
+  if (Array.isArray(rows) && rows.length) {
+    const row = rows.find((r) => r.id === asset.geckoId) || rows[0];
+    const usd = Number(row?.current_price);
+    if (Number.isFinite(usd)) {
+      return {
+        usd,
+        change24h: Number(row.price_change_percentage_24h) || 0,
+      };
+    }
+  }
+  const capId = GECKO_TO_COINCAP[asset.geckoId];
+  if (!capId) return null;
+  try {
+    const data = await fetchJsonRaw(
+      `https://api.coincap.io/v2/assets/${encodeURIComponent(capId)}`,
+      {},
+      8000
+    );
+    const row = data?.data;
+    const usd = Number(row?.priceUsd);
+    if (!Number.isFinite(usd)) return null;
+    return {
+      usd,
+      change24h: Number(row.changePercent24Hr) || 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Look up one relic's live quote and store it for the chart/hoard. */
+async function refreshAssetQuote(id) {
+  const asset = getAsset(id);
+  if (!asset || asset.id === "cash" || asset.kind === "cash") return null;
+  if (quotingIds.has(id)) return null;
+
+  quotingIds.add(id);
+  paintAvatarQuoteState(id);
+  try {
+    let q = null;
+    if (asset.yahooSymbol && (asset.kind === "stock" || asset.kind === "metal" || !asset.geckoId)) {
+      q = await fetchStockQuote(asset.yahooSymbol);
+    }
+    if (!q && asset.geckoId) {
+      q = await fetchCryptoQuote(asset);
+    }
+    if (q && Number.isFinite(q.usd)) {
+      prices[id] = q;
+      freshQuoteIds.add(id);
+      rememberQuotes({ [id]: q });
+      saveMarketSnapshot();
+      return q;
+    }
+    return null;
+  } finally {
+    quotingIds.delete(id);
+    paintAvatarQuoteState(id);
+    if (nav.view === "tv" && nav.coinId === id) {
+      setCoinAvatarEl(document.getElementById("tv-avatar"), asset);
+    } else if (nav.view === "home" || nav.view === "portfolio" || nav.view === "asset") {
+      render();
+    }
+  }
+}
+
+function openAssetChart(id) {
+  if (!id || !getAsset(id)) return;
+  showView("tv", { coinId: id });
+  refreshAssetQuote(id);
+}
+
 function chunk(arr, size) {
   const out = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
-}
-
-function sparklineToPoints(pricesArr, spanHours) {
-  const vals = (pricesArr || []).map(Number).filter((n) => Number.isFinite(n));
-  if (vals.length < 2) return [];
-  const use = vals.length > 24 ? vals.slice(-Math.max(24, Math.round(vals.length * (spanHours / 168)))) : vals;
-  const now = Date.now();
-  const step = (spanHours * 3600 * 1000) / Math.max(1, use.length - 1);
-  return use.map((px, i) => /** @type {[number, number]} */ ([now - (use.length - 1 - i) * step, px]));
-}
-
-function cacheSparklineCharts(coinId, sparkPrices) {
-  const day = sparklineToPoints(sparkPrices, 24);
-  if (day.length < 2) return;
-  chartCache[chartCacheKey(coinId, "1")] = { fetchedAt: Date.now(), points: day };
 }
 
 const GECKO_TO_COINCAP = {
@@ -1315,7 +1471,7 @@ const GECKO_TO_COINCAP = {
 };
 
 async function fetchGeckoMarkets(ids) {
-  const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids.join(",")}&order=market_cap_desc&per_page=50&page=1&sparkline=true&price_change_percentage=24h`;
+  const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids.join(",")}&order=market_cap_desc&per_page=50&page=1&sparkline=false&price_change_percentage=24h`;
   try {
     const data = await fetchJsonRaw(url, {}, 12000);
     if (Array.isArray(data)) return data;
@@ -1364,26 +1520,6 @@ async function fetchCoinCapPrices(next, cryptos) {
   }
 }
 
-async function fetchCoinCapDayChart(coin) {
-  const capId = GECKO_TO_COINCAP[coin.geckoId];
-  if (!capId) return;
-  const end = Date.now();
-  const start = end - 24 * 3600 * 1000;
-  try {
-    const data = await fetchJsonRaw(
-      `https://api.coincap.io/v2/assets/${encodeURIComponent(capId)}/history?interval=m5&start=${start}&end=${end}`,
-      {},
-      10000
-    );
-    const pts = (data?.data || [])
-      .map((p) => [Number(p.time), Number(p.priceUsd)])
-      .filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
-    if (pts.length >= 2) chartCache[chartCacheKey(coin.id, "1")] = { fetchedAt: Date.now(), points: pts };
-  } catch {
-    /* ignore */
-  }
-}
-
 async function fetchCryptoPrices(next) {
   const cryptos = allAssets().filter((a) => a.geckoId);
   if (!cryptos.length) return;
@@ -1405,19 +1541,9 @@ async function fetchCryptoPrices(next) {
         };
         freshQuoteIds.add(coin.id);
       }
-      const spark = row.sparkline_in_7d?.price;
-      if (Array.isArray(spark) && spark.length > 2) cacheSparklineCharts(coin.id, spark);
     }
   }
   if (!gotGecko) await fetchCoinCapPrices(next, cryptos);
-
-  const needCharts = cryptos.filter((c) => !chartCache[chartCacheKey(c.id, "1")]?.points?.length);
-  if (needCharts.length) {
-    await runPool(
-      needCharts.map((coin) => async () => fetchCoinCapDayChart(coin)),
-      2
-    );
-  }
 }
 
 async function fetchQuotedAssetPrices(next) {
@@ -1456,159 +1582,96 @@ async function fetchPrices() {
   saveMarketSnapshot();
 }
 
-const CHART_CACHE_MS = 5 * 60 * 1000;
-
 const CHART_RANGES = {
   "1": { label: "24H", days: "1", spanMs: 24 * 3600 * 1000 },
 };
-
-function chartCacheKey(coinId, days) {
-  return `${coinId}:${days}`;
-}
 
 function rangeSpanMs(days) {
   return CHART_RANGES[days]?.spanMs ?? 24 * 3600 * 1000;
 }
 
-async function fetchStockChart(symbol, days = "1") {
-  const range = "1d";
-  const interval = "5m";
-  const data = await fetchJsonCors(
-    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&range=${range}`
-  );
-  const result = data?.chart?.result?.[0];
-  const ts = result?.timestamp;
-  const close = result?.indicators?.quote?.[0]?.close;
-  if (!Array.isArray(ts) || !Array.isArray(close)) return [];
-  return ts
-    .map((t, i) => [Number(t) * 1000, Number(close[i])])
-    .filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
+function historyPointsFor(coinId) {
+  if (coinId === "cash") return [];
+  const since = Date.now() - PRICE_HISTORY_MS;
+  const pts = store.priceHistory?.[coinId];
+  if (!Array.isArray(pts)) return [];
+  return pts
+    .filter((p) => Number.isFinite(p?.t) && Number.isFinite(p?.usd) && p.t >= since)
+    .map((p) => /** @type {[number, number]} */ ([p.t, p.usd]))
+    .sort((a, b) => a[0] - b[0]);
 }
 
-/** Fetch (or reuse) price series for a coin from CoinGecko / Yahoo for the given days. */
-async function fetchCoinChart(coinId, days = "1") {
-  const coin = getAsset(coinId);
-  if (!coin) return [];
-  const key = chartCacheKey(coinId, days);
-  const cached = chartCache[key];
-  if (cached && Date.now() - cached.fetchedAt < CHART_CACHE_MS && cached.points?.length) {
-    return cached.points;
+function priceAtOrBefore(points, ts) {
+  if (!points?.length) return null;
+  if (ts < points[0][0]) return null;
+  let lo = 0;
+  let hi = points.length - 1;
+  if (ts >= points[hi][0]) return points[hi][1];
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const mt = points[mid][0];
+    if (mt === ts) return points[mid][1];
+    if (mt < ts) lo = mid + 1;
+    else hi = mid - 1;
   }
-
-  if (coin.yahooSymbol && (coin.kind === "stock" || coin.kind === "metal")) {
-    try {
-      const points = await fetchStockChart(coin.yahooSymbol, days);
-      if (points.length) {
-        chartCache[key] = { fetchedAt: Date.now(), points };
-        return points;
-      }
-    } catch (err) {
-      if (cached?.points?.length) return cached.points;
-      throw err;
-    }
-  }
-
-  if (!coin.geckoId) {
-    if (cached?.points?.length) return cached.points;
-    return [];
-  }
-
-  // 24h sparkline from the batched /coins/markets call — no per-coin 7d/market_chart.
-  const spark = chartCache[chartCacheKey(coinId, "1")];
-  if (spark?.points?.length && Date.now() - spark.fetchedAt < CHART_CACHE_MS * 2) {
-    return spark.points;
-  }
-  if (cached?.points?.length) return cached.points;
-  return [];
+  const i = Math.max(0, hi);
+  return points[i]?.[1] ?? null;
 }
 
 /**
- * Build a portfolio USD value series using current balances × historical prices.
+ * Build a portfolio USD series from stored live quotes only (no chart API).
  * @param {{ coinId: string, balance: number }[]} holdings
- * @param {string} days
- * @returns {Promise<{ series: { t: number, v: number }[], partial: boolean, failed: number }>}
+ * @returns {{ series: { t: number, v: number }[], partial: boolean, failed: number }}
  */
-async function buildPortfolioSeries(holdings, days = "1") {
+function buildPortfolioSeries(holdings) {
   const active = (holdings || []).filter((h) => h.balance > 0 && getAsset(h.coinId));
   if (!active.length) return { series: [], partial: false, failed: 0 };
 
   const seriesByCoin = {};
   let failed = 0;
-  await runPool(
-    active.map((h) => async () => {
-      try {
-        seriesByCoin[h.coinId] = await fetchCoinChart(h.coinId, days);
-      } catch {
-        const stale = chartCache[chartCacheKey(h.coinId, days)]?.points;
-        if (stale?.length) seriesByCoin[h.coinId] = stale;
-        else {
-          seriesByCoin[h.coinId] = [];
-          failed += 1;
-        }
-      }
-    }),
-    2
-  );
-
-  // Common timeline from the densest successful series
-  let timeline = [];
+  let withHistory = 0;
   for (const h of active) {
-    const pts = seriesByCoin[h.coinId] || [];
-    if (pts.length > timeline.length) timeline = pts.map((p) => p[0]);
+    if (h.coinId === "cash") {
+      seriesByCoin[h.coinId] = [];
+      continue;
+    }
+    const pts = historyPointsFor(h.coinId);
+    seriesByCoin[h.coinId] = pts;
+    if (pts.length) withHistory += 1;
+    else failed += 1;
   }
 
+  const timeSet = new Set();
+  for (const h of active) {
+    for (const p of seriesByCoin[h.coinId] || []) timeSet.add(p[0]);
+  }
+  const timeline = [...timeSet].sort((a, b) => a - b);
   if (timeline.length < 2) {
-    if (failed === active.length) {
-      return { series: [], partial: false, failed };
-    }
-    // Soft fallback only when we have prices but empty charts
-    const total = active.reduce((s, h) => s + h.balance * (getQuote(h.coinId)?.usd || 0), 0);
-    const now = Date.now();
-    return {
-      series: [
-        { t: now - rangeSpanMs(days), v: total },
-        { t: now, v: total },
-      ],
-      partial: failed > 0,
-      failed,
-    };
-  }
-
-  function priceAt(points, ts) {
-    if (!points?.length) return null;
-    let lo = 0;
-    let hi = points.length - 1;
-    if (ts <= points[0][0]) return points[0][1];
-    if (ts >= points[hi][0]) return points[hi][1];
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      const mt = points[mid][0];
-      if (mt === ts) return points[mid][1];
-      if (mt < ts) lo = mid + 1;
-      else hi = mid - 1;
-    }
-    const i = Math.max(0, Math.min(points.length - 1, lo));
-    const a = points[Math.max(0, i - 1)];
-    const b = points[i];
-    if (!a || !b) return b?.[1] ?? a?.[1] ?? null;
-    if (b[0] === a[0]) return b[1];
-    const w = (ts - a[0]) / (b[0] - a[0]);
-    return a[1] + (b[1] - a[1]) * w;
+    return { series: [], partial: withHistory > 0, failed };
   }
 
   const out = [];
+  let anyMissing = false;
   for (const t of timeline) {
     let v = 0;
     let ok = false;
     for (const h of active) {
-      const px = priceAt(seriesByCoin[h.coinId], t);
-      if (px == null) continue;
+      if (h.coinId === "cash") {
+        v += h.balance;
+        ok = true;
+        continue;
+      }
+      const px = priceAtOrBefore(seriesByCoin[h.coinId], t);
+      if (px == null) {
+        anyMissing = true;
+        continue;
+      }
       v += h.balance * px;
       ok = true;
     }
     if (ok) out.push({ t, v });
   }
-  return { series: out, partial: failed > 0, failed };
+  return { series: out, partial: failed > 0 || anyMissing, failed };
 }
 
 /**
@@ -1698,8 +1761,8 @@ function setChartOverlay(state, message) {
   if (status) status.textContent = message || "";
 }
 
-/** Load and paint the dashboard 24H portfolio chart. */
-async function updateHomeChart(allocRows, { force } = {}) {
+/** Paint the hall 24h chart from stored live quotes only. */
+function updateHomeChart(allocRows, { force } = {}) {
   const svg = document.getElementById("home-chart");
   if (!svg) return;
 
@@ -1714,55 +1777,24 @@ async function updateHomeChart(allocRows, { force } = {}) {
 
   if (!holdings.length) {
     svg.innerHTML = "";
-    chartLoading = false;
-    updateGlobalSpinner();
     setChartOverlay("empty", "Add treasures to see the omen");
     return;
   }
 
-  const token = ++chartRenderToken;
-  const rangeLabel = CHART_RANGES[chartRange]?.label || "24H";
-  chartLoading = true;
-  updateGlobalSpinner();
-  setChartOverlay("loading", `Loading ${rangeLabel} chart…`);
-  // Keep previous SVG visible under dimmed overlay while loading (unless forced clear)
   if (force) svg.innerHTML = "";
 
-  try {
-    const { series, partial, failed } = await buildPortfolioSeries(holdings, chartRange);
-    if (token !== chartRenderToken) return;
-
-    const ok = renderSparkline(svg, series);
-    if (!ok) {
-      setChartOverlay("error", "The omen faded. Scry again or retry.");
-      return;
-    }
-    if (partial && failed > 0) {
-      setChartOverlay(
-        "partial",
-        failed === 1 ? "Partial data — 1 coin missing" : `Partial data — ${failed} coins missing`
-      );
-      // Auto-hide partial banner after a moment so chart stays readable
-      setTimeout(() => {
-        if (token === chartRenderToken) setChartOverlay("ok");
-      }, 2200);
-    } else {
-      setChartOverlay("ok");
-    }
-  } catch (err) {
-    if (token !== chartRenderToken) return;
-    // Keep previous SVG if we had one; only clear when empty
-    if (!svg.innerHTML.trim()) svg.innerHTML = "";
-    const msg = /429|Rate/.test(String(err?.message || err))
-      ? "Rate limited — try again in a moment"
-      : "Chart didn’t load. Tap retry.";
-    setChartOverlay("error", msg);
-  } finally {
-    if (token === chartRenderToken) {
-      chartLoading = false;
-      updateGlobalSpinner();
-    }
+  const { series, failed } = buildPortfolioSeries(holdings);
+  const ok = renderSparkline(svg, series);
+  if (!ok) {
+    setChartOverlay(
+      "empty",
+      failed === holdings.length
+        ? "Scry the markets — the omen needs stored prices"
+        : "Need more readings — scry again to fill the omen"
+    );
+    return;
   }
+  setChartOverlay("ok");
 }
 
 function humanizeError(err) {
@@ -2080,8 +2112,6 @@ async function refreshAll({ fromPull } = {}) {
       toast(`Prices: ${humanizeError(err)}`, "error");
       // Keep prior prices — do not wipe to zero
     }
-
-    // Keep sparkline chart cache; fetchPrices refreshes it. Don't wipe or we re-hit CoinGecko per coin.
 
     const jobs = [];
     for (const pf of store.portfolios) {
@@ -2485,6 +2515,11 @@ function render() {
     title.hidden = false;
     title.textContent = "Risk";
     renderRisk();
+  } else if (nav.view === "future") {
+    if (brand) brand.hidden = true;
+    title.hidden = false;
+    title.textContent = "Future";
+    renderFuture();
   } else if (nav.view === "tv") {
     if (brand) brand.hidden = true;
     title.hidden = false;
@@ -2561,6 +2596,13 @@ function plSortValue(r, key) {
   return r.pl;
 }
 
+function crystalSortValue(r, key) {
+  const coin = getAsset(r.coinId);
+  if (key === "relic") return displayName(coin) || coin?.symbol || r.coinId;
+  if (key === "price") return r.futurePrice;
+  return r.futureUsd;
+}
+
 function cycleSort(state, key) {
   if (state.key === key) state.dir = state.dir === "desc" ? "asc" : "desc";
   else {
@@ -2578,9 +2620,11 @@ function wireHoldingsSort() {
     if (!list || !key) return;
     if (list === "hoard") cycleSort(hoardSort, key);
     else if (list === "pl") cycleSort(plSort, key);
+    else if (list === "crystal") cycleSort(crystalSort, key);
     else return;
     if (list === "hoard") renderHome();
-    else renderHomePl();
+    else if (list === "pl") renderHomePl();
+    else renderCrystalBall();
   });
 }
 
@@ -2606,7 +2650,9 @@ function renderHome() {
   if (!rows.length) {
     empty.hidden = false;
     renderWizardHud();
+    renderFutureWizardHud();
     renderHomePl();
+    renderCrystalBall();
     return;
   }
   empty.hidden = true;
@@ -2653,7 +2699,9 @@ function renderHome() {
   }
 
   renderWizardHud();
+  renderFutureWizardHud();
   renderHomePl();
+  renderCrystalBall();
 }
 
 /** Placeholder vitals until the shield / power / health formulas land. */
@@ -2763,14 +2811,95 @@ function renderWizardHud() {
   const totalPct = formatPct(cost.plPct);
   setLedgerCell("wizard-total-pct", totalPct.text, totalPct.cls);
 
-  renderWizardHoldings(allocRows, cost.rows);
+  renderWizardHoldings("wizard-holdings-body", allocRows, cost.rows);
 }
 
-function renderWizardHoldings(allocRows, plRows) {
-  const body = document.getElementById("wizard-holdings-body");
+/** Combat stats using Future prices for value, allocation, and P/L. */
+function futureWizardCombatStats() {
+  const { rows, totalFuture, totalLive, changeUsd, changePct } = crystalBallTotals();
+  const cost = allPortfoliosCostTotals();
+  const costById = Object.fromEntries((cost.rows || []).map((r) => [r.coinId, r]));
+
+  if (!rows.length || !(totalFuture > 0)) {
+    return {
+      attach: 0,
+      shield: 10,
+      power: 0,
+      health: 100,
+      todayChange: 0,
+      todayGainLossUsd: 0,
+      totalGainLoss: 0,
+      attachRaw: 0,
+      rows: [],
+    };
+  }
+
+  let attachRaw = 0;
+  const holdRows = [];
+  for (const r of rows) {
+    const allocFrac = r.futureUsd / totalFuture;
+    const rated = getAssetRisk(r.coinId);
+    const risk = rated != null ? rated : 5;
+    attachRaw += allocFrac * risk;
+    const cb = costById[r.coinId];
+    const costUsd = cb?.cost > 0 ? cb.cost : 0;
+    const pl = costUsd > 0 ? r.futureUsd - costUsd : null;
+    const plPct = costUsd > 0 && pl != null ? (pl / costUsd) * 100 : null;
+    holdRows.push({
+      coinId: r.coinId,
+      balance: r.balance,
+      usd: r.futureUsd,
+      alloc: r.alloc,
+      price: r.futurePrice,
+      livePrice: r.livePrice,
+      changePct: r.changePct,
+      plPct,
+    });
+  }
+
+  const totalCost = cost.totalCost || 0;
+  const totalGainLoss = totalCost > 0 ? ((totalFuture - totalCost) / totalCost) * 100 : 0;
+  const attach = Math.max(0, Math.min(9, Math.floor(attachRaw)));
+
+  return {
+    attach,
+    shield: 10 - attach,
+    power: attachRaw / 9,
+    health: 100 + totalGainLoss,
+    todayChange: changePct ?? 0,
+    todayGainLossUsd: changeUsd ?? 0,
+    totalGainLoss,
+    attachRaw,
+    rows: holdRows,
+  };
+}
+
+function renderFutureWizardHud() {
+  const combat = futureWizardCombatStats();
+  setHudBar("future-wizard-shield-fill", "future-wizard-shield-pct", (combat.shield / 10) * 100, 0);
+  setHudBar("future-wizard-power-fill", "future-wizard-power-pct", combat.power * 100, 1);
+  setHudBar("future-wizard-health-fill", "future-wizard-health-pct", combat.health, 1);
+  const pair = document.getElementById("future-wizard-pair");
+  if (pair) pair.textContent = `${combat.attach} / ${combat.shield}`;
+  updateWizardMedia("future", combat);
+
+  const todayPct = formatPct(combat.todayChange);
+  setLedgerCell("future-wizard-today-pct", todayPct.text, todayPct.cls);
+
+  const todayUsd = formatChangeUsd(combat.todayGainLossUsd, null);
+  setLedgerCell("future-wizard-today-usd", todayUsd.text, todayUsd.cls);
+
+  const totalPct = formatPct(combat.totalGainLoss);
+  setLedgerCell("future-wizard-total-pct", totalPct.text, totalPct.cls);
+
+  renderWizardHoldings("future-wizard-holdings-body", combat.rows, null, { future: true });
+}
+
+function renderWizardHoldings(bodyId, allocRows, plRows, { future = false } = {}) {
+  const body = document.getElementById(bodyId || "wizard-holdings-body");
   if (!body) return;
 
-  const plById = Object.fromEntries((plRows || []).map((r) => [r.coinId, r]));
+  const plById = plRows ? Object.fromEntries(plRows.map((r) => [r.coinId, r])) : {};
   const rows = (allocRows || []).filter((r) => r.balance > 0 || r.usd > 0);
 
   body.innerHTML = "";
@@ -2782,8 +2911,8 @@ function renderWizardHoldings(allocRows, plRows) {
   for (const r of rows) {
     const coin = getAsset(r.coinId);
     if (!coin) continue;
-    const px = getQuote(coin.id)?.usd;
-    const ch = getQuote(coin.id)?.change24h;
+    const px = future ? r.price : getQuote(coin.id)?.usd;
+    const ch = future ? r.changePct : getQuote(coin.id)?.change24h;
     const day = formatPct(ch);
     const priceCls =
       px == null || ch == null || Number.isNaN(Number(ch))
@@ -2793,7 +2922,7 @@ function renderWizardHoldings(allocRows, plRows) {
           : ch < 0
             ? "down"
             : "flat";
-    const total = formatPct(plById[coin.id]?.plPct);
+    const total = formatPct(future ? r.plPct : plById[coin.id]?.plPct);
     const risk = getAssetRisk(coin.id);
     const riskCls =
       risk == null ? "neutral" : risk <= 3 ? "risk-low" : risk <= 6 ? "risk-mid" : "risk-high";
@@ -2897,6 +3026,104 @@ function renderHomePl() {
       <div class="holding-right">
         <div class="holding-value ${plCls}">${r.pl == null ? "—" : `${plSign}${formatUsd(r.pl)}`}</div>
         <div class="holding-pl ${pct.cls}">${r.pl == null ? "—" : pct.text}</div>
+      </div>
+    `;
+    list.appendChild(row);
+  }
+}
+
+function crystalBallTotals() {
+  const { allocRows } = allPortfoliosTotals();
+  let totalFuture = 0;
+  let totalLive = 0;
+  const rows = [];
+  for (const r of allocRows || []) {
+    if (!(r.balance > 0 || r.usd > 0)) continue;
+    const coin = getAsset(r.coinId);
+    if (!coin) continue;
+    const live = getQuote(coin.id)?.usd ?? 0;
+    const fut = getFuturePrice(coin.id);
+    const futurePrice = fut != null && fut > 0 ? fut : live;
+    const futureUsd = r.balance * futurePrice;
+    const liveUsd = r.balance * live;
+    totalFuture += futureUsd;
+    totalLive += liveUsd;
+    rows.push({
+      coinId: coin.id,
+      balance: r.balance,
+      livePrice: live,
+      futurePrice,
+      futureUsd,
+      liveUsd,
+      changePct: live > 0 ? ((futurePrice - live) / live) * 100 : null,
+      alloc: 0,
+    });
+  }
+  for (const r of rows) {
+    r.alloc = totalFuture > 0 ? (r.futureUsd / totalFuture) * 100 : 0;
+  }
+  rows.sort((a, b) => b.futureUsd - a.futureUsd);
+  const changeUsd = totalFuture - totalLive;
+  const changePct = totalLive > 0 ? (changeUsd / totalLive) * 100 : null;
+  return { totalFuture, totalLive, changeUsd, changePct, rows };
+}
+
+function renderCrystalBall() {
+  const { totalFuture, totalLive, changeUsd, changePct, rows } = crystalBallTotals();
+  const totalEl = document.getElementById("crystal-total");
+  const changeEl = document.getElementById("crystal-change");
+  const todayEl = document.getElementById("crystal-today");
+  const visionEl = document.getElementById("crystal-vision");
+  const countEl = document.getElementById("crystal-count");
+  const list = document.getElementById("crystal-holdings-list");
+  const empty = document.getElementById("crystal-empty");
+  if (!totalEl || !list || !empty) return;
+
+  totalEl.textContent = formatUsd(totalFuture);
+  setChangePill(changeEl, changeUsd, changePct);
+  const muted = changeEl.querySelector(".muted");
+  if (muted) muted.textContent = "vs today";
+  if (todayEl) todayEl.textContent = formatUsd(totalLive);
+  if (visionEl) visionEl.textContent = formatUsd(totalFuture);
+  if (countEl) countEl.textContent = String(rows.length);
+
+  renderAllocBar(
+    document.getElementById("crystal-alloc-bar"),
+    rows.map((r) => ({ coinId: r.coinId, usd: r.futureUsd, alloc: r.alloc }))
+  );
+
+  list.innerHTML = "";
+  const sorted = sortRows(rows, crystalSort.key, crystalSort.dir, crystalSortValue);
+  paintSortHeader("crystal-holdings-header", crystalSort);
+
+  if (!sorted.length) {
+    empty.hidden = false;
+    return;
+  }
+  empty.hidden = true;
+
+  for (const r of sorted) {
+    const coin = getAsset(r.coinId);
+    if (!coin) continue;
+    const pct = formatPct(r.changePct);
+    const row = document.createElement("div");
+    row.className = "holding-row";
+    row.setAttribute("role", "row");
+    row.innerHTML = `
+      <div class="holding-left">
+        ${coinAvatarHtml(coin)}
+        <div>
+          <div class="holding-name">${escapeHtml(displayName(coin))}</div>
+          <div class="holding-symbol">${coin.symbol}${r.balance > 0 ? ` · ${formatAmt(r.balance, coin.symbol)}` : ""}</div>
+        </div>
+      </div>
+      <div class="holding-mid">
+        <div class="holding-price">${r.futurePrice != null ? formatUsd(r.futurePrice) : "—"}</div>
+        <div class="holding-pct ${pct.cls}">${pct.text}</div>
+      </div>
+      <div class="holding-right">
+        <div class="holding-value">${formatUsd(r.futureUsd)}</div>
+        <div class="holding-amount">${r.livePrice != null ? `now ${formatUsd(r.livePrice)}` : "—"}</div>
       </div>
     `;
     list.appendChild(row);
@@ -3012,6 +3239,55 @@ function renderRisk() {
         <div class="risk-row-mark" aria-hidden="true">${mark}</div>
       </div>
       <div class="risk-scale" role="group" aria-label="${escapeHtml(coin.symbol)} risk 1 to 9">${pips}</div>
+    `;
+    list.appendChild(row);
+  }
+}
+
+function renderFuture() {
+  const list = document.getElementById("future-list");
+  const empty = document.getElementById("future-empty");
+  if (!list) return;
+
+  const assets = heldAssetsForRisk();
+  list.innerHTML = "";
+  if (!assets.length) {
+    if (empty) empty.hidden = false;
+    return;
+  }
+  if (empty) empty.hidden = true;
+
+  for (const coin of assets) {
+    const live = getQuote(coin.id)?.usd;
+    const saved = store.futurePrices?.[coin.id];
+    const shown =
+      Number.isFinite(saved) && saved > 0
+        ? saved
+        : live != null && live > 0
+          ? live
+          : null;
+    const row = document.createElement("div");
+    row.className = "future-row";
+    row.innerHTML = `
+      <div class="future-row-head">
+        ${coinAvatarHtml(coin)}
+        <div class="future-row-text">
+          <div class="future-row-name">${escapeHtml(displayName(coin))}</div>
+          <div class="future-row-symbol">${escapeHtml(coin.symbol)}${
+            live != null ? ` · now ${formatUsd(live)}` : ""
+          }</div>
+        </div>
+      </div>
+      <label class="field-label" for="future-price-${escapeHtml(coin.id)}">Future price (USD)</label>
+      <input
+        id="future-price-${escapeHtml(coin.id)}"
+        class="field-input future-price-input"
+        type="text"
+        inputmode="decimal"
+        data-future-id="${escapeHtml(coin.id)}"
+        value="${shown != null ? escapeHtml(String(roundPriceInput(shown))) : ""}"
+        placeholder="e.g. 42000"
+      />
     `;
     list.appendChild(row);
   }
@@ -3762,8 +4038,14 @@ function importData(file) {
           data.customAssets != null ? data.customAssets : store.customAssets
         ),
         lastQuotes: data.lastQuotes && typeof data.lastQuotes === "object" ? data.lastQuotes : store.lastQuotes || {},
+        priceHistory: normalizePriceHistory(
+          data.priceHistory != null ? data.priceHistory : store.priceHistory
+        ),
         assetRisk: normalizeAssetRiskMap(
           data.assetRisk != null ? data.assetRisk : store.assetRisk
+        ),
+        futurePrices: normalizeFuturePrices(
+          data.futurePrices != null ? data.futurePrices : store.futurePrices
         ),
         portfolios: data.portfolios.map(normalizePortfolio),
       };
@@ -3789,7 +4071,6 @@ function wipeAll() {
   saveStore();
   balanceCache = {};
   prices = {};
-  chartCache = {};
   lastChartHoldings = [];
   showView("home");
   render();
@@ -3811,13 +4092,33 @@ const WIZARD_VIDEOS = new Set([
   "64_RED",
 ]);
 
-function wizardPaneOpen() {
-  return nav.view === "home" && homeSlide === HOME_SLIDE_WIZARD;
+const WIZARD_MEDIA = {
+  live: {
+    slide: HOME_SLIDE_WIZARD,
+    card: "wizard-film-card",
+    film: "wizard-film",
+    img: "wizard-film-img",
+    stats: () => wizardCombatStats(),
+  },
+  future: {
+    slide: HOME_SLIDE_FUTURE_WIZARD,
+    card: "future-wizard-film-card",
+    film: "future-wizard-film",
+    img: "future-wizard-film-img",
+    stats: () => futureWizardCombatStats(),
+  },
+};
+
+function wizardMediaOpen(kind) {
+  const cfg = WIZARD_MEDIA[kind];
+  return !!cfg && nav.view === "home" && homeSlide === cfg.slide;
 }
 
-function showWizardStill(src) {
-  const film = document.getElementById("wizard-film");
-  const img = document.getElementById("wizard-film-img");
+function showWizardStill(kind, src) {
+  const cfg = WIZARD_MEDIA[kind];
+  if (!cfg) return;
+  const film = document.getElementById(cfg.film);
+  const img = document.getElementById(cfg.img);
   if (film) {
     film.pause();
     film.hidden = true;
@@ -3836,9 +4137,11 @@ function showWizardStill(src) {
   }
 }
 
-function showWizardVideo(src) {
-  const film = document.getElementById("wizard-film");
-  const img = document.getElementById("wizard-film-img");
+function showWizardVideo(kind, src) {
+  const cfg = WIZARD_MEDIA[kind];
+  if (!cfg) return;
+  const film = document.getElementById(cfg.film);
+  const img = document.getElementById(cfg.img);
   if (img) img.hidden = true;
   if (!film) return;
   film.hidden = false;
@@ -3846,7 +4149,7 @@ function showWizardVideo(src) {
     film.dataset.clip = src;
     film.src = src;
   }
-  if (wizardPaneOpen() && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  if (wizardMediaOpen(kind) && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     const play = film.play();
     if (play && typeof play.catch === "function") play.catch(() => {});
   } else {
@@ -3854,15 +4157,17 @@ function showWizardVideo(src) {
   }
 }
 
-function updateWizardFilmClip(combat) {
-  const card = document.getElementById("wizard-film-card");
-  const film = document.getElementById("wizard-film");
-  if (!wizardPaneOpen()) {
+function updateWizardMedia(kind, combat) {
+  const cfg = WIZARD_MEDIA[kind];
+  if (!cfg) return;
+  const card = document.getElementById(cfg.card);
+  const film = document.getElementById(cfg.film);
+  if (!wizardMediaOpen(kind)) {
     film?.pause();
     return;
   }
 
-  const stats = combat || wizardCombatStats();
+  const stats = combat || cfg.stats();
   const code = wizardCharacterCode(stats);
   const stem = wizardStemFromCode(code);
   const tone = wizardToneFromCode(code);
@@ -3872,27 +4177,32 @@ function updateWizardFilmClip(combat) {
   }
 
   if (card?.dataset.wizardCode === code) {
-    if (film && !film.hidden && film.dataset.clip) showWizardVideo(film.dataset.clip);
+    if (film && !film.hidden && film.dataset.clip) showWizardVideo(kind, film.dataset.clip);
     return;
   }
   if (card) card.dataset.wizardCode = code;
 
   const png = `assets/images/${stem}.PNG`;
   if (WIZARD_VIDEOS.has(stem)) {
-    showWizardVideo(`assets/images/${stem}.mp4`);
+    showWizardVideo(kind, `assets/images/${stem}.mp4`);
     if (film) {
       film.onerror = () => {
         film.onerror = null;
-        showWizardStill(png);
+        showWizardStill(kind, png);
       };
     }
   } else {
-    showWizardStill(png);
+    showWizardStill(kind, png);
   }
 }
 
+function updateWizardFilmClip(combat) {
+  updateWizardMedia("live", combat);
+}
+
 function syncWizardFilm() {
-  updateWizardFilmClip();
+  updateWizardMedia("live");
+  updateWizardMedia("future");
 }
 
 function syncHomePager(animate) {
@@ -4099,7 +4409,7 @@ function drawKirlianBranch(ctx, x, y, ang, len, width, depth, seed, pal, forkCha
 
 function pickKirlianTargets(fromX, fromY, count) {
   const skipRe =
-    /^(app|views|view|view-active|view-home|home-pager|home-track|home-pane|holdings-list|portfolio-list|address-list|coin-pick-list|risk-list|codex-menu|wizard-hud|kirlian-canvas)$/;
+    /^(app|views|view|view-active|view-home|home-pager|home-track|home-pane|holdings-list|portfolio-list|address-list|coin-pick-list|risk-list|future-list|codex-menu|wizard-hud|kirlian-canvas)$/;
   const nodes = document.querySelectorAll(
     "#app .view.view-active div, #app .view.view-active button, #app .view.view-active h2, #app .holding-row, #app .summary-card, #app .pf-card, #app .settings-group, #app .topbar, #app .brand, #app .coin-avatar, #app .field-input, .modal.sheet"
   );
@@ -4667,11 +4977,6 @@ function wire() {
   wireHoldingsSort();
 
   document.getElementById("home-chart-retry")?.addEventListener("click", () => {
-    // Bust cache for current range so retry actually refetches
-    const days = chartRange;
-    for (const key of Object.keys(chartCache)) {
-      if (key.endsWith(`:${days}`)) delete chartCache[key];
-    }
     updateHomeChart(null, { force: true });
   });
 
@@ -4687,7 +4992,7 @@ function wire() {
       if (!id || !getAsset(id)) return;
       e.preventDefault();
       e.stopPropagation();
-      showView("tv", { coinId: id });
+      openAssetChart(id);
     },
     true
   );
@@ -4699,11 +5004,12 @@ function wire() {
     const id = av.getAttribute("data-open-tv");
     if (!id || !getAsset(id)) return;
     e.preventDefault();
-    showView("tv", { coinId: id });
+    openAssetChart(id);
   });
 
   document.getElementById("btn-settings").addEventListener("click", () => showView("settings"));
   document.getElementById("btn-risk")?.addEventListener("click", () => showView("risk"));
+  document.getElementById("btn-future")?.addEventListener("click", () => showView("future"));
   document.getElementById("risk-list")?.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-risk-set]");
     if (!btn || nav.view !== "risk") return;
@@ -4712,6 +5018,26 @@ function wire() {
     if (!id || !Number.isInteger(n)) return;
     setAssetRisk(id, n);
     renderRisk();
+  });
+  const saveFutureInput = (input) => {
+    const id = input.getAttribute("data-future-id");
+    if (!id) return;
+    const saved = setFuturePrice(id, input.value);
+    if (saved != null) input.value = String(saved);
+    else if (!String(input.value || "").trim()) input.value = "";
+  };
+  document.getElementById("future-list")?.addEventListener("change", (e) => {
+    const input = e.target.closest?.(".future-price-input");
+    if (!input || nav.view !== "future") return;
+    saveFutureInput(input);
+  });
+  document.getElementById("future-list")?.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    const input = e.target.closest?.(".future-price-input");
+    if (!input || nav.view !== "future") return;
+    e.preventDefault();
+    saveFutureInput(input);
+    input.blur();
   });
 
   document.getElementById("btn-new-portfolio").addEventListener("click", () => openPortfolioModal("create"));
@@ -4869,7 +5195,7 @@ function goBack() {
     showView("portfolio", { portfolioId: nav.portfolioId });
   } else if (nav.view === "portfolio") {
     showView("settings");
-  } else if (nav.view === "risk") {
+  } else if (nav.view === "risk" || nav.view === "future") {
     showView("settings");
   } else if (nav.view === "settings") {
     showView("home");

@@ -74,14 +74,6 @@
           <span id="active-portfolio-label">Portfolio</span>
           <span class="chevron" aria-hidden="true">▾</span>
         </button>
-        <div
-          class="global-spinner"
-          id="global-spinner"
-          hidden
-          role="status"
-          aria-live="polite"
-          aria-label="Loading data"
-        ></div>
       </div>
     </header>
 
@@ -184,6 +176,8 @@
                 <button type="button" class="home-dot" data-home-slide="0" aria-label="The wizard" aria-selected="false"></button>
                 <button type="button" class="home-dot" data-home-slide="1" aria-label="The hoard" aria-selected="false"></button>
                 <button type="button" class="home-dot" data-home-slide="2" aria-label="The reckoning" aria-selected="false"></button>
+                                <button type="button" class="home-dot" data-home-slide="3" aria-label="Crystal Ball" aria-selected="false"></button>
+                                <button type="button" class="home-dot" data-home-slide="4" aria-label="Future Wizard" aria-selected="false"></button>
               </div>
             </div>
 
@@ -208,7 +202,9 @@
                   <button type="button" class="home-dot" data-home-slide="0" aria-label="The wizard" aria-selected="false"></button>
                   <button type="button" class="home-dot" data-home-slide="1" aria-label="The hoard" aria-selected="true"></button>
                   <button type="button" class="home-dot" data-home-slide="2" aria-label="The reckoning" aria-selected="false"></button>
-                </div>
+                                  <button type="button" class="home-dot" data-home-slide="3" aria-label="Crystal Ball" aria-selected="false"></button>
+                                <button type="button" class="home-dot" data-home-slide="4" aria-label="Future Wizard" aria-selected="false"></button>
+              </div>
               </div>
 
               <div class="section-head">
@@ -252,7 +248,9 @@
                   <button type="button" class="home-dot" data-home-slide="0" aria-label="The wizard" aria-selected="false"></button>
                   <button type="button" class="home-dot" data-home-slide="1" aria-label="The hoard" aria-selected="false"></button>
                   <button type="button" class="home-dot" data-home-slide="2" aria-label="The reckoning" aria-selected="true"></button>
-                </div>
+                                  <button type="button" class="home-dot" data-home-slide="3" aria-label="Crystal Ball" aria-selected="false"></button>
+                                <button type="button" class="home-dot" data-home-slide="4" aria-label="Future Wizard" aria-selected="false"></button>
+              </div>
               </div>
 
               <div class="section-head">
@@ -267,6 +265,144 @@
               <p class="empty-hint" id="home-pl-empty" hidden>
                 The hoard is empty. Open the Codex to create a portfolio and add coins.
               </p>
+            </div>
+
+
+            <div class="home-pane" id="home-pane-crystal" data-home-slide="3">
+              <div class="summary-card">
+                <div class="summary-label">Crystal Ball</div>
+                <div class="summary-value" id="crystal-total">$0.00</div>
+                <div class="summary-change" id="crystal-change">
+                  <span class="pill neutral">—</span>
+                  <span class="muted">vs today</span>
+                </div>
+                <div class="summary-stats">
+                  <div>
+                    <div class="stat-label">Today</div>
+                    <div class="stat-value" id="crystal-today">—</div>
+                  </div>
+                  <div>
+                    <div class="stat-label">Vision</div>
+                    <div class="stat-value" id="crystal-vision">—</div>
+                  </div>
+                  <div>
+                    <div class="stat-label">Treasures</div>
+                    <div class="stat-value" id="crystal-count">0</div>
+                  </div>
+                </div>
+                <div class="alloc-bar" id="crystal-alloc-bar" aria-hidden="true"></div>
+                <div class="home-dots" role="tablist" aria-label="Hoard pages">
+                  <button type="button" class="home-dot" data-home-slide="0" aria-label="The wizard" aria-selected="false"></button>
+                  <button type="button" class="home-dot" data-home-slide="1" aria-label="The hoard" aria-selected="false"></button>
+                  <button type="button" class="home-dot" data-home-slide="2" aria-label="The reckoning" aria-selected="false"></button>
+                  <button type="button" class="home-dot" data-home-slide="3" aria-label="Crystal Ball" aria-selected="true"></button>
+                                <button type="button" class="home-dot" data-home-slide="4" aria-label="Future Wizard" aria-selected="false"></button>
+              </div>
+              </div>
+
+              <div class="section-head">
+                <h2>Treasures</h2>
+              </div>
+              <div class="holdings-header" id="crystal-holdings-header">
+                <button type="button" class="holdings-sort" data-sort-list="crystal" data-sort-key="relic">Relic</button>
+                <button type="button" class="holdings-sort right" data-sort-list="crystal" data-sort-key="price">Future</button>
+                <button type="button" class="holdings-sort right is-on" data-sort-list="crystal" data-sort-key="value" aria-sort="descending">Vision</button>
+              </div>
+              <div class="holdings-list" id="crystal-holdings-list"></div>
+              <p class="empty-hint" id="crystal-empty" hidden>
+                The hoard is empty. Open the Codex to create a portfolio and add coins.
+              </p>
+            </div>
+
+
+            <div class="home-pane" id="home-pane-future-wizard" data-home-slide="4">
+              <div class="wizard-film-card tone-gold" id="future-wizard-film-card">
+                <video
+                  class="wizard-film"
+                  id="future-wizard-film"
+                  muted
+                  loop
+                  playsinline
+                  preload="none"
+                  hidden
+                  aria-label="Future wizard"
+                ></video>
+                <img
+                  class="wizard-film-img"
+                  id="future-wizard-film-img"
+                  src="assets/images/19.PNG"
+                  alt="Future wizard"
+                />
+                <div class="wizard-film-frame" aria-hidden="true"></div>
+              </div>
+              <div class="wizard-pair" id="future-wizard-pair" aria-label="Power and Shield">0 / 10</div>
+              <div class="wizard-hud" aria-label="Future wizard vitals">
+                <div class="hud-bar hud-shield">
+                  <div class="hud-bar-head">
+                    <span class="hud-bar-label">Shield</span>
+                    <span class="hud-bar-pct" id="future-wizard-shield-pct">0%</span>
+                  </div>
+                  <div class="hud-bar-track" aria-hidden="true">
+                    <div class="hud-bar-fill" id="future-wizard-shield-fill" style="width: 0%"></div>
+                  </div>
+                </div>
+                <div class="hud-bar hud-power">
+                  <div class="hud-bar-head">
+                    <span class="hud-bar-label">Power</span>
+                    <span class="hud-bar-pct" id="future-wizard-power-pct">0%</span>
+                  </div>
+                  <div class="hud-bar-track" aria-hidden="true">
+                    <div class="hud-bar-fill" id="future-wizard-power-fill" style="width: 0%"></div>
+                  </div>
+                </div>
+                <div class="hud-bar hud-health">
+                  <div class="hud-bar-head">
+                    <span class="hud-bar-label">Health</span>
+                    <span class="hud-bar-pct" id="future-wizard-health-pct">0%</span>
+                  </div>
+                  <div class="hud-bar-track" aria-hidden="true">
+                    <div class="hud-bar-fill" id="future-wizard-health-fill" style="width: 0%"></div>
+                  </div>
+                </div>
+              </div>
+              <table class="wizard-ledger">
+                <tbody>
+                  <tr>
+                    <th scope="row">vs Today</th>
+                    <td id="future-wizard-today-pct">—</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">vs Today $</th>
+                    <td id="future-wizard-today-usd">—</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Total Gain/Loss</th>
+                    <td id="future-wizard-total-pct">—</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="wizard-holdings-wrap">
+                <table class="wizard-holdings">
+                  <thead>
+                    <tr>
+                      <th>Ticker</th>
+                      <th>Price</th>
+                      <th>Alloc</th>
+                      <th>Risk</th>
+                      <th>Gain/Loss</th>
+                      <th>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody id="future-wizard-holdings-body"></tbody>
+                </table>
+              </div>
+              <div class="home-dots" role="tablist" aria-label="Hoard pages">
+                <button type="button" class="home-dot" data-home-slide="0" aria-label="The wizard" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="1" aria-label="The hoard" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="2" aria-label="The reckoning" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="3" aria-label="Crystal Ball" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="4" aria-label="Future Wizard" aria-selected="true"></button>
+              </div>
             </div>
           </div>
         </div>
@@ -505,10 +641,18 @@
         <p class="empty-hint" id="risk-empty" hidden>Add stocks or coins first, then return to mark their peril.</p>
       </section>
 
+      <!-- FUTURE: foresight prices -->
+      <section class="view" id="view-future" data-view="future">
+        <p class="page-desc">Set a future price for each relic. Defaults to the live quote — change any value and it is saved for the Crystal Ball.</p>
+        <div class="future-list" id="future-list"></div>
+        <p class="empty-hint" id="future-empty" hidden>Add stocks or coins first, then return to set their future prices.</p>
+      </section>
+
       <!-- SETTINGS: portfolios + data -->
       <section class="view" id="view-settings" data-view="settings">
         <nav class="codex-menu" aria-label="Codex">
           <button type="button" class="codex-menu-btn" id="btn-risk">Risk</button>
+          <button type="button" class="codex-menu-btn" id="btn-future">Future</button>
         </nav>
         <div class="settings-group">
           <h2>Lightning Power</h2>

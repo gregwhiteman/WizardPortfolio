@@ -192,20 +192,6 @@ button {
   min-width: 44px;
 }
 
-.global-spinner {
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  border: 2px solid rgba(212, 175, 55, 0.2);
-  border-top-color: var(--accent);
-  animation: chart-spin 0.7s linear infinite;
-}
-
-.global-spinner[hidden] {
-  display: none !important;
-}
-
 .topbar-title {
   margin: 0;
   font-family: var(--display);
@@ -1433,6 +1419,28 @@ button.holding-row:active {
   outline-offset: 1px;
 }
 
+.coin-avatar.quote-loading {
+  outline: none;
+  overflow: visible;
+  position: relative;
+}
+
+.coin-avatar.quote-loading::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  border-top-color: #fff;
+  animation: quote-spin 0.7s linear infinite;
+  pointer-events: none;
+  z-index: 2;
+}
+
+@keyframes quote-spin {
+  to { transform: rotate(360deg); }
+}
+
 .coin-avatar.lg {
   width: 48px;
   height: 48px;
@@ -1753,6 +1761,56 @@ button.holding-row:active {
   text-transform: uppercase;
   color: var(--accent);
   vertical-align: middle;
+}
+
+/* ── Future foresight list ── */
+.future-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.future-row {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+}
+
+.future-row-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin-bottom: 10px;
+}
+
+.future-row-text {
+  min-width: 0;
+}
+
+.future-row-name {
+  font-weight: 600;
+  font-size: 0.98rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.future-row-symbol {
+  font-family: var(--display);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.future-row .field-label {
+  margin-bottom: 6px;
+}
+
+.future-row .field-input {
+  margin-bottom: 0;
 }
 
 /* ── Codex menu ── */
