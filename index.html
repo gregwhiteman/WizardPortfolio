@@ -113,12 +113,12 @@
                   <input id="buy-price" class="field-input" type="text" inputmode="decimal" placeholder="0.00" />
                   <label class="field-label" for="buy-owned">Owned Shares</label>
                   <input id="buy-owned" class="field-input" type="text" inputmode="numeric" placeholder="0" />
-                  <div class="buysell-stat"><span>New Shares</span><strong id="buy-new-shares">0</strong></div>
-                  <div class="buysell-stat"><span>Total Shares</span><strong id="buy-total-shares">0</strong></div>
-                  <div class="buysell-stat"><span>Share Offset</span><strong id="buy-share-offset">0</strong></div>
-                  <div class="buysell-stat"><span>Offset Total</span><strong id="buy-offset-total">0</strong></div>
+                  <!--<div class="buysell-stat"><span>New Shares</span><strong id="buy-new-shares">0</strong></div>-->
+                  <!--<div class="buysell-stat"><span>Total Shares</span><strong id="buy-total-shares">0</strong></div>-->
+                  <!--<div class="buysell-stat"><span>Share Offset</span><strong id="buy-share-offset">0</strong></div>-->
+                  <!--<div class="buysell-stat"><span>Offset Total</span><strong id="buy-offset-total">0</strong></div>-->
                   <div class="buysell-stat"><span>Cost</span><strong id="buy-cost">$0.00</strong></div>
-                  <div class="buysell-stat"><span>Money Left</span><strong id="buy-money-left">$0.00</strong></div>
+                  <!--<div class="buysell-stat"><span>Money Left</span><strong id="buy-money-left">$0.00</strong></div>-->
                   <div class="buysell-stat emphasis buy"><span>Buy Shares</span><strong id="buy-shares">0</strong></div>
                 </section>
 
@@ -129,12 +129,25 @@
                   <label class="field-label" for="sell-price">Current Price</label>
                   <input id="sell-price" class="field-input" type="text" inputmode="decimal" placeholder="0.00" />
                   <label class="field-label" for="sell-percent">Sell Percent</label>
-                  <input id="sell-percent" class="field-input" type="text" inputmode="decimal" placeholder="0.00" />
+                  <input
+            id="sell-percent"
+            class="power-slider"
+            type="range"
+            min="0"
+            max="100"
+            step="5"
+            value="2"
+          />
+                  
+                  
+                  
+                  
+                  <!--<input id="sell-percent" class="field-input" type="text" inputmode="decimal" placeholder="0.00" />-->
                   <label class="field-label" for="sell-owned">Owned Shares</label>
                   <input id="sell-owned" class="field-input" type="text" inputmode="numeric" placeholder="0" />
-                  <div class="buysell-stat"><span>After Sell</span><strong id="sell-after-sell">0</strong></div>
-                  <div class="buysell-stat"><span>Remaining Shares</span><strong id="sell-remaining-shares">0</strong></div>
-                  <div class="buysell-stat"><span>Share Offset</span><strong id="sell-share-offset">0</strong></div>
+                  <!--<div class="buysell-stat"><span>After Sell</span><strong id="sell-after-sell">0</strong></div>-->
+                  <!--<div class="buysell-stat"><span>Remaining Shares</span><strong id="sell-remaining-shares">0</strong></div>-->
+                  <!--<div class="buysell-stat"><span>Share Offset</span><strong id="sell-share-offset">0</strong></div>-->
                   <div class="buysell-stat emphasis sell"><span>Sell Shares</span><strong id="sell-shares">0</strong></div>
                   <div class="buysell-stat"><span>Total Remaining</span><strong id="sell-total-remaining">0</strong></div>
                   <div class="buysell-stat"><span>Stock Value</span><strong id="sell-stock-value">$0.00</strong></div>

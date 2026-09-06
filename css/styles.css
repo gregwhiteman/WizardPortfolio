@@ -497,7 +497,7 @@ button {
 
 .buysell-stat.emphasis.buy strong {
   color: #7dba5a;
-  font-size: 1.05rem;
+  font-size: 2.05rem;
 }
 
 .buysell-stat.emphasis.sell {
@@ -507,7 +507,7 @@ button {
 
 .buysell-stat.emphasis.sell strong {
   color: #d4543c;
-  font-size: 1.05rem;
+  font-size: 2.05rem;
 }
 
 @media (min-width: 720px) {
