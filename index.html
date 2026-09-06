@@ -70,6 +70,14 @@
         <h1 class="topbar-title" id="topbar-title" hidden>The Hall</h1>
       </div>
       <div class="topbar-right">
+        <button type="button" class="icon-btn btn-refresh" id="btn-refresh" hidden aria-label="Refresh prices and balances">
+          <span class="refresh-storm-host" id="refresh-storm-host">
+            <svg class="btn-refresh-bolt" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path class="btn-refresh-bolt-glow" d="M13.2 2.4 7.6 13.2h4.2L9.8 21.6l8.4-12.2h-4.4L13.2 2.4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+              <path class="btn-refresh-bolt-core" d="M13.2 2.4 7.6 13.2h4.2L9.8 21.6l8.4-12.2h-4.4L13.2 2.4Z" fill="currentColor"/>
+            </svg>
+          </span>
+        </button>
         <button type="button" class="portfolio-switch" id="btn-portfolio-switch" hidden>
           <span id="active-portfolio-label">Portfolio</span>
           <span class="chevron" aria-hidden="true">▾</span>
@@ -77,21 +85,74 @@
       </div>
     </header>
 
-    <!-- Pull-to-refresh (outside scroller so it never distorts scroll position) -->
-    <div class="ptr-indicator" id="ptr-indicator" aria-hidden="true">
-      <div class="ptr-indicator-inner">
-        <span class="ptr-icon" id="ptr-icon">↓</span>
-        <span class="ptr-label" id="ptr-label">Scry the markets</span>
-      </div>
-    </div>
-
     <!-- Views -->
     <main class="views" id="views">
       <!-- DASHBOARD: totalled holdings across included portfolios -->
       <section class="view view-active view-home" id="view-home" data-view="home">
         <div class="home-pager" id="home-pager">
           <div class="home-track" id="home-track">
-            <div class="home-pane" id="home-pane-wizard" data-home-slide="0">
+            
+            <div class="home-pane" id="home-pane-buysell" data-home-slide="0">
+              <div class="buysell-grid">
+                <section class="buysell-panel buy-panel" aria-label="Buy calculations">
+                  <h2 class="buysell-title buy-title">Buy</h2>
+                  <label class="field-label" for="buy-ticker">Ticker</label>
+                  <input id="buy-ticker" class="field-input" type="text" autocomplete="off" placeholder="e.g. TSLA" />
+                  <div class="buysell-row">
+                    <div>
+                      <label class="field-label" for="buy-cash1">Cash 1</label>
+                      <input id="buy-cash1" class="field-input" type="text" inputmode="decimal" placeholder="0.00" />
+                    </div>
+                    <div>
+                      <label class="field-label" for="buy-cash2">Cash 2</label>
+                      <input id="buy-cash2" class="field-input" type="text" inputmode="decimal" placeholder="0.00" />
+                    </div>
+                  </div>
+                  <div class="buysell-stat"><span>Total Money</span><strong id="buy-total-money">$0.00</strong></div>
+                  <label class="field-label" for="buy-price">Current Price</label>
+                  <input id="buy-price" class="field-input" type="text" inputmode="decimal" placeholder="0.00" />
+                  <label class="field-label" for="buy-owned">Owned Shares</label>
+                  <input id="buy-owned" class="field-input" type="text" inputmode="numeric" placeholder="0" />
+                  <div class="buysell-stat"><span>New Shares</span><strong id="buy-new-shares">0</strong></div>
+                  <div class="buysell-stat"><span>Total Shares</span><strong id="buy-total-shares">0</strong></div>
+                  <div class="buysell-stat"><span>Share Offset</span><strong id="buy-share-offset">0</strong></div>
+                  <div class="buysell-stat"><span>Offset Total</span><strong id="buy-offset-total">0</strong></div>
+                  <div class="buysell-stat"><span>Cost</span><strong id="buy-cost">$0.00</strong></div>
+                  <div class="buysell-stat"><span>Money Left</span><strong id="buy-money-left">$0.00</strong></div>
+                  <div class="buysell-stat emphasis buy"><span>Buy Shares</span><strong id="buy-shares">0</strong></div>
+                </section>
+
+                <section class="buysell-panel sell-panel" aria-label="Sell calculations">
+                  <h2 class="buysell-title sell-title">Sell</h2>
+                  <label class="field-label" for="sell-ticker">Ticker</label>
+                  <input id="sell-ticker" class="field-input" type="text" autocomplete="off" placeholder="e.g. TSLA" />
+                  <label class="field-label" for="sell-price">Current Price</label>
+                  <input id="sell-price" class="field-input" type="text" inputmode="decimal" placeholder="0.00" />
+                  <label class="field-label" for="sell-percent">Sell Percent</label>
+                  <input id="sell-percent" class="field-input" type="text" inputmode="decimal" placeholder="0.00" />
+                  <label class="field-label" for="sell-owned">Owned Shares</label>
+                  <input id="sell-owned" class="field-input" type="text" inputmode="numeric" placeholder="0" />
+                  <div class="buysell-stat"><span>After Sell</span><strong id="sell-after-sell">0</strong></div>
+                  <div class="buysell-stat"><span>Remaining Shares</span><strong id="sell-remaining-shares">0</strong></div>
+                  <div class="buysell-stat"><span>Share Offset</span><strong id="sell-share-offset">0</strong></div>
+                  <div class="buysell-stat emphasis sell"><span>Sell Shares</span><strong id="sell-shares">0</strong></div>
+                  <div class="buysell-stat"><span>Total Remaining</span><strong id="sell-total-remaining">0</strong></div>
+                  <div class="buysell-stat"><span>Stock Value</span><strong id="sell-stock-value">$0.00</strong></div>
+                  <div class="buysell-stat"><span>Sell Value</span><strong id="sell-value">$0.00</strong></div>
+                </section>
+              </div>
+
+                            <div class="home-dots" role="tablist" aria-label="Hoard pages">
+                <button type="button" class="home-dot" data-home-slide="0" aria-label="Buy/Sell" aria-selected="true"></button>
+                <button type="button" class="home-dot" data-home-slide="1" aria-label="The wizard" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="2" aria-label="The hoard" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="3" aria-label="The reckoning" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="4" aria-label="Crystal Ball" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="5" aria-label="Future Wizard" aria-selected="false"></button>
+              </div>
+            </div>
+
+            <div class="home-pane" id="home-pane-wizard" data-home-slide="1">
               <div class="wizard-stage" aria-label="Wizard and wealth badges">
                 <div class="wizard-badges wizard-badges-left" id="wizard-badges-left"></div>
                 <div class="wizard-film-card tone-gold" id="wizard-film-card">
@@ -176,16 +237,17 @@
                   <tbody id="wizard-holdings-body"></tbody>
                 </table>
               </div>
-              <div class="home-dots" role="tablist" aria-label="Hoard pages">
-                <button type="button" class="home-dot" data-home-slide="0" aria-label="The wizard" aria-selected="false"></button>
-                <button type="button" class="home-dot" data-home-slide="1" aria-label="The hoard" aria-selected="false"></button>
-                <button type="button" class="home-dot" data-home-slide="2" aria-label="The reckoning" aria-selected="false"></button>
-                                <button type="button" class="home-dot" data-home-slide="3" aria-label="Crystal Ball" aria-selected="false"></button>
-                                <button type="button" class="home-dot" data-home-slide="4" aria-label="Future Wizard" aria-selected="false"></button>
+                            <div class="home-dots" role="tablist" aria-label="Hoard pages">
+                <button type="button" class="home-dot" data-home-slide="0" aria-label="Buy/Sell" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="1" aria-label="The wizard" aria-selected="true"></button>
+                <button type="button" class="home-dot" data-home-slide="2" aria-label="The hoard" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="3" aria-label="The reckoning" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="4" aria-label="Crystal Ball" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="5" aria-label="Future Wizard" aria-selected="false"></button>
               </div>
             </div>
 
-            <div class="home-pane" id="home-pane-market" data-home-slide="1">
+            <div class="home-pane" id="home-pane-market" data-home-slide="2">
               <div class="summary-card">
                 <div class="summary-label">The hoard</div>
                 <div class="summary-value" id="home-total">$0.00</div>
@@ -194,7 +256,7 @@
                   <span class="muted">24h</span>
                 </div>
                 <div class="chart-wrap" id="home-chart-wrap">
-                  <svg class="chart-svg" id="home-chart" viewBox="0 0 320 96" preserveAspectRatio="none" role="img" aria-label="Portfolio value chart"></svg>
+                  <svg class="chart-svg" id="home-chart" viewBox="0 0 320 96" preserveAspectRatio="none" role="img" aria-label="7-day portfolio value chart from stored refreshes"></svg>
                   <div class="chart-overlay" id="home-chart-overlay" hidden>
                     <div class="chart-spinner" id="home-chart-spinner" hidden aria-hidden="true"></div>
                     <p class="chart-status" id="home-chart-status"></p>
@@ -202,12 +264,13 @@
                   </div>
                 </div>
                 <div class="alloc-bar" id="home-alloc-bar" aria-hidden="true"></div>
-                <div class="home-dots" role="tablist" aria-label="Hoard pages">
-                  <button type="button" class="home-dot" data-home-slide="0" aria-label="The wizard" aria-selected="false"></button>
-                  <button type="button" class="home-dot" data-home-slide="1" aria-label="The hoard" aria-selected="true"></button>
-                  <button type="button" class="home-dot" data-home-slide="2" aria-label="The reckoning" aria-selected="false"></button>
-                                  <button type="button" class="home-dot" data-home-slide="3" aria-label="Crystal Ball" aria-selected="false"></button>
-                                <button type="button" class="home-dot" data-home-slide="4" aria-label="Future Wizard" aria-selected="false"></button>
+                              <div class="home-dots" role="tablist" aria-label="Hoard pages">
+                <button type="button" class="home-dot" data-home-slide="0" aria-label="Buy/Sell" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="1" aria-label="The wizard" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="2" aria-label="The hoard" aria-selected="true"></button>
+                <button type="button" class="home-dot" data-home-slide="3" aria-label="The reckoning" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="4" aria-label="Crystal Ball" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="5" aria-label="Future Wizard" aria-selected="false"></button>
               </div>
               </div>
 
@@ -225,7 +288,7 @@
               </p>
             </div>
 
-            <div class="home-pane" id="home-pane-pl" data-home-slide="2">
+            <div class="home-pane" id="home-pane-pl" data-home-slide="3">
               <div class="summary-card">
                 <div class="summary-label">The reckoning</div>
                 <div class="summary-value" id="home-pl-total">—</div>
@@ -248,12 +311,13 @@
                   </div>
                 </div>
                 <div class="alloc-bar" id="home-pl-alloc-bar" aria-hidden="true"></div>
-                <div class="home-dots" role="tablist" aria-label="Hoard pages">
-                  <button type="button" class="home-dot" data-home-slide="0" aria-label="The wizard" aria-selected="false"></button>
-                  <button type="button" class="home-dot" data-home-slide="1" aria-label="The hoard" aria-selected="false"></button>
-                  <button type="button" class="home-dot" data-home-slide="2" aria-label="The reckoning" aria-selected="true"></button>
-                                  <button type="button" class="home-dot" data-home-slide="3" aria-label="Crystal Ball" aria-selected="false"></button>
-                                <button type="button" class="home-dot" data-home-slide="4" aria-label="Future Wizard" aria-selected="false"></button>
+                              <div class="home-dots" role="tablist" aria-label="Hoard pages">
+                <button type="button" class="home-dot" data-home-slide="0" aria-label="Buy/Sell" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="1" aria-label="The wizard" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="2" aria-label="The hoard" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="3" aria-label="The reckoning" aria-selected="true"></button>
+                <button type="button" class="home-dot" data-home-slide="4" aria-label="Crystal Ball" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="5" aria-label="Future Wizard" aria-selected="false"></button>
               </div>
               </div>
 
@@ -272,7 +336,7 @@
             </div>
 
 
-            <div class="home-pane" id="home-pane-crystal" data-home-slide="3">
+            <div class="home-pane" id="home-pane-crystal" data-home-slide="4">
               <div class="summary-card">
                 <div class="summary-label">Crystal Ball</div>
                 <div class="summary-value" id="crystal-total">$0.00</div>
@@ -295,12 +359,13 @@
                   </div>
                 </div>
                 <div class="alloc-bar" id="crystal-alloc-bar" aria-hidden="true"></div>
-                <div class="home-dots" role="tablist" aria-label="Hoard pages">
-                  <button type="button" class="home-dot" data-home-slide="0" aria-label="The wizard" aria-selected="false"></button>
-                  <button type="button" class="home-dot" data-home-slide="1" aria-label="The hoard" aria-selected="false"></button>
-                  <button type="button" class="home-dot" data-home-slide="2" aria-label="The reckoning" aria-selected="false"></button>
-                  <button type="button" class="home-dot" data-home-slide="3" aria-label="Crystal Ball" aria-selected="true"></button>
-                                <button type="button" class="home-dot" data-home-slide="4" aria-label="Future Wizard" aria-selected="false"></button>
+                              <div class="home-dots" role="tablist" aria-label="Hoard pages">
+                <button type="button" class="home-dot" data-home-slide="0" aria-label="Buy/Sell" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="1" aria-label="The wizard" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="2" aria-label="The hoard" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="3" aria-label="The reckoning" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="4" aria-label="Crystal Ball" aria-selected="true"></button>
+                <button type="button" class="home-dot" data-home-slide="5" aria-label="Future Wizard" aria-selected="false"></button>
               </div>
               </div>
 
@@ -319,7 +384,7 @@
             </div>
 
 
-            <div class="home-pane" id="home-pane-future-wizard" data-home-slide="4">
+            <div class="home-pane" id="home-pane-future-wizard" data-home-slide="5">
               <div class="wizard-stage" aria-label="Future wizard and wealth badges">
                 <div class="wizard-badges wizard-badges-left" id="future-wizard-badges-left"></div>
                 <div class="wizard-film-card tone-gold" id="future-wizard-film-card">
@@ -404,12 +469,13 @@
                   <tbody id="future-wizard-holdings-body"></tbody>
                 </table>
               </div>
-              <div class="home-dots" role="tablist" aria-label="Hoard pages">
-                <button type="button" class="home-dot" data-home-slide="0" aria-label="The wizard" aria-selected="false"></button>
-                <button type="button" class="home-dot" data-home-slide="1" aria-label="The hoard" aria-selected="false"></button>
-                <button type="button" class="home-dot" data-home-slide="2" aria-label="The reckoning" aria-selected="false"></button>
-                <button type="button" class="home-dot" data-home-slide="3" aria-label="Crystal Ball" aria-selected="false"></button>
-                <button type="button" class="home-dot" data-home-slide="4" aria-label="Future Wizard" aria-selected="true"></button>
+                            <div class="home-dots" role="tablist" aria-label="Hoard pages">
+                <button type="button" class="home-dot" data-home-slide="0" aria-label="Buy/Sell" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="1" aria-label="The wizard" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="2" aria-label="The hoard" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="3" aria-label="The reckoning" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="4" aria-label="Crystal Ball" aria-selected="false"></button>
+                <button type="button" class="home-dot" data-home-slide="5" aria-label="Future Wizard" aria-selected="true"></button>
               </div>
             </div>
           </div>
@@ -519,7 +585,8 @@
             maxlength="40"
             placeholder="e.g. Binance, Coinbase"
           />
-          <button type="submit" class="btn-primary full">Add manual amount</button>
+          <button type="submit" class="btn-primary full" id="manual-form-submit">Add manual amount</button>
+          <button type="button" class="btn-secondary full" id="manual-form-cancel" hidden>Cancel edit</button>
         </form>
 
         <div class="address-list" id="asset-manual-list"></div>
@@ -644,23 +711,15 @@
 
       <!-- RISK: per-relic peril 1–9 -->
       <section class="view" id="view-risk" data-view="risk">
-        <p class="page-desc">Assign each stock and coin a peril from <strong>1</strong> (steadfast) to <strong>9</strong> (most risky). Ratings are saved on this device.</p>
+        <p class="page-desc">Assign each stock, coin, metal, and cash a peril from <strong>1</strong> (steadfast) to <strong>9</strong> (most risky). Ratings are saved on this device.</p>
         <div class="risk-list" id="risk-list"></div>
-        <p class="empty-hint" id="risk-empty" hidden>Add stocks or coins first, then return to mark their peril.</p>
-      </section>
-
-      <!-- FUTURE: foresight prices -->
-      <section class="view" id="view-future" data-view="future">
-        <p class="page-desc">Set a future price for each relic. Defaults to the live quote — change any value and it is saved for the Crystal Ball.</p>
-        <div class="future-list" id="future-list"></div>
-        <p class="empty-hint" id="future-empty" hidden>Add stocks or coins first, then return to set their future prices.</p>
+        <p class="empty-hint" id="risk-empty" hidden>Add stocks, coins, metals, or cash first, then return to mark their peril.</p>
       </section>
 
       <!-- SETTINGS: portfolios + data -->
       <section class="view" id="view-settings" data-view="settings">
         <nav class="codex-menu" aria-label="Codex">
           <button type="button" class="codex-menu-btn" id="btn-risk">Risk</button>
-          <button type="button" class="codex-menu-btn" id="btn-future">Future</button>
         </nav>
         <div class="settings-group">
           <h2>Lightning Power</h2>
@@ -744,6 +803,27 @@
       <div class="modal-actions">
         <button type="button" class="btn-secondary" id="modal-portfolio-cancel">Cancel</button>
         <button type="button" class="btn-primary" id="modal-portfolio-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Crystal Ball future price -->
+  <div class="modal-backdrop" id="modal-future-price" hidden>
+    <div class="modal sheet" role="dialog" aria-modal="true" aria-labelledby="modal-future-title">
+      <h2 id="modal-future-title">Future price</h2>
+      <div class="modal-future-head" id="modal-future-head"></div>
+      <label class="field-label" for="future-price-modal-input">Future price (USD)</label>
+      <input
+        id="future-price-modal-input"
+        class="field-input"
+        type="text"
+        inputmode="decimal"
+        placeholder="e.g. 42000"
+      />
+      <p class="field-hint" id="modal-future-hint">Leave blank and save to use the live quote.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" id="modal-future-cancel">Cancel</button>
+        <button type="button" class="btn-primary" id="modal-future-save">Save</button>
       </div>
     </div>
   </div>

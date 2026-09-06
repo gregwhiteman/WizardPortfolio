@@ -1,0 +1,2431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wizard Portfolio - D&D Character Sheet</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Crimson Text', serif;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(20, 20, 20, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(15, 15, 15, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 40% 80%, rgba(10, 10, 10, 0.3) 0%, transparent 50%),
+                linear-gradient(135deg, #000000 0%, #050505 25%, #0a0a0a 50%, #0f0f0f 75%, #000000 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            color: #e0e0e0;
+            position: relative;
+            overflow-x: hidden;
+            padding: 0;
+            margin: 0;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 25% 25%, rgba(30, 30, 30, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 75% 75%, rgba(20, 20, 20, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .portfolio-container {
+            background: 
+                linear-gradient(145deg, rgba(15, 15, 15, 0.6) 0%, rgba(20, 20, 20, 0.5) 50%, rgba(10, 10, 10, 0.6) 100%);
+            backdrop-filter: blur(5px);
+            border-radius: 0 0 15px 15px;
+            padding: 0px 40px 40px 40px;
+            box-shadow: 
+                0 0 30px rgba(100, 100, 100, 0.2),
+                inset 0 0 20px rgba(0, 0, 0, 0.5),
+                0 8px 32px rgba(0, 0, 0, 0.8);
+            border: 3px solid rgba(20, 20, 20, 0.5);
+            border-top: none;
+            text-align: center;
+            max-width: 1400px;
+            width: 100%;
+            position: relative;
+            z-index: 1;
+            opacity: 0.85;
+        }
+
+        .portfolio-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: rgba(20, 20, 20, 0.5);
+            border-radius: 0 0 17px 17px;
+            z-index: -1;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            margin-top: 0px;
+        }
+
+        .title {
+            font-family: 'Cinzel', serif;
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: -6px;
+            text-shadow: 
+                2px 2px 0px #333,
+                4px 4px 8px rgba(0, 0, 0, 0.8);
+            background: linear-gradient(45deg, #e0e0e0, #f0f0f0, #d0d0d0, #c0c0c0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .nav-link {
+            color: #ccc;
+            text-decoration: none;
+            font-family: 'Cinzel', serif;
+            font-size: 1.1rem;
+            margin: 0 10px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            background: rgba(15, 15, 15, 0.8);
+            border: 2px solid rgba(20, 20, 20, 0.5);
+            transition: all 0.3s ease;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        .nav-link:hover {
+            background: rgba(20, 20, 20, 0.9);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(100, 100, 100, 0.3);
+        }
+
+        .refresh-btn {
+            color: #ccc;
+            text-decoration: none;
+            font-family: 'Cinzel', serif;
+            font-size: 1.1rem;
+            margin: 0 10px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            background: rgba(15, 15, 15, 0.8);
+            border: 2px solid rgba(20, 20, 20, 0.5);
+            transition: all 0.3s ease;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+            cursor: pointer;
+        }
+
+        .refresh-btn:hover {
+            background: rgba(20, 20, 20, 0.9);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(100, 100, 100, 0.3);
+        }
+
+        .refresh-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .auto-refresh-select {
+            background: rgba(15, 15, 15, 0.8);
+            border: 2px solid rgba(20, 20, 20, 0.5);
+            color: #ccc;
+            font-family: 'Cinzel', serif;
+            font-size: 1.1rem;
+            margin: 0 10px;
+            padding: 10px 15px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+            cursor: pointer;
+        }
+
+        .auto-refresh-select:hover {
+            background: rgba(20, 20, 20, 0.9);
+            border-color: #aaa;
+        }
+
+        .auto-refresh-select:focus {
+            outline: none;
+            box-shadow: 0 0 10px rgba(100, 100, 100, 0.5);
+            border-color: #aaa;
+        }
+
+        .auto-refresh-select option {
+            background: rgba(15, 15, 15, 0.95);
+            color: #e0e0e0;
+        }
+
+        /* Lightning toggle button styles */
+        .lightning-toggle-btn {
+            color: #ccc;
+            text-decoration: none;
+            font-family: 'Cinzel', serif;
+            font-size: 1.1rem;
+            margin: 0 10px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            background: rgba(15, 15, 15, 0.8);
+            border: 2px solid rgba(20, 20, 20, 0.5);
+            transition: all 0.3s ease;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .lightning-toggle-btn:hover {
+            background: rgba(20, 20, 20, 0.9);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(100, 100, 100, 0.3);
+        }
+
+        .lightning-toggle-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .lightning-toggle-btn:hover::before {
+            left: 100%;
+        }
+
+        .lightning-toggle-btn.active {
+            background: linear-gradient(45deg, #ffd700 0%, #ffed4e 100%);
+            border-color: #ffd700;
+            color: #000;
+            text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.5);
+        }
+
+        .lightning-toggle-btn.active:hover {
+            background: linear-gradient(45deg, #ffed4e 0%, #ffd700 100%);
+            box-shadow: 0 5px 20px rgba(255, 215, 0, 0.7);
+        }
+
+        .character-section {
+            margin: 10px 0;
+            margin-top: -17px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .character-image {
+            width: 200px;
+            height: 300px;
+            border-radius: 15px;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 
+                0 0 20px rgba(100, 100, 100, 0.3),
+                0 10px 30px rgba(0, 0, 0, 0.6);
+            border: 4px solid rgba(20, 20, 20, 0.5);
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(145deg, rgba(15, 15, 15, 0.8), rgba(20, 20, 20, 0.6));
+        }
+
+        .character-image.float {
+            animation: float 3s ease-in-out infinite;
+        }
+
+        /* Glowing runes background styles */
+        .runes-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+            overflow: hidden;
+        }
+
+        /* Lightning bolt styles */
+        .lightning-bolt {
+            position: absolute;
+            pointer-events: none;
+            z-index: 1;
+            opacity: 0;
+            animation: lightningFlash 0.8s ease-in-out;
+        }
+
+        .lightning-segment {
+            position: absolute;
+            background: currentColor;
+            border-radius: 1px;
+            box-shadow: 0 0 5px currentColor, 0 0 10px currentColor, 0 0 15px currentColor;
+        }
+
+        .red-lightning {
+            color: #ff4444;
+        }
+
+        .green-lightning {
+            color: #44ff44;
+        }
+
+        .gold-lightning {
+            color: #ffd700;
+        }
+
+        @keyframes lightningFlash {
+            0% { opacity: 0; }
+            5% { opacity: 1; }
+            15% { opacity: 0.7; }
+            25% { opacity: 1; }
+            35% { opacity: 0.8; }
+            45% { opacity: 1; }
+            55% { opacity: 0.6; }
+            65% { opacity: 1; }
+            75% { opacity: 0.9; }
+            85% { opacity: 1; }
+            95% { opacity: 0.3; }
+            100% { opacity: 0; }
+        }
+
+        /* .portfolio-container .runes-background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        } */
+
+        .rune {
+            position: absolute;
+            font-family: 'Cinzel', serif;
+            font-size: 2rem;
+            font-weight: bold;
+            opacity: 0.3;
+            animation: runeGlow 4s ease-in-out infinite;
+            text-shadow: 0 0 10px currentColor;
+        }
+
+        .red-rune {
+            color: #ff4444;
+            text-shadow: 0 0 15px #ff4444, 0 0 30px #ff4444;
+        }
+
+        .green-rune {
+            color: #44ff44;
+            text-shadow: 0 0 15px #44ff44, 0 0 30px #44ff44;
+        }
+
+        .gold-rune {
+            color: #ffd700;
+            text-shadow: 0 0 15px #ffd700, 0 0 30px #ffd700;
+        }
+
+        @keyframes runeGlow {
+            0%, 100% { 
+                opacity: 0.2; 
+                transform: scale(1) rotate(0deg);
+            }
+            50% { 
+                opacity: 0.6; 
+                transform: scale(1.1) rotate(5deg);
+            }
+        }
+
+        /* Rune symbols for magical effect */
+        .rune-symbols {
+            font-size: 1.5rem;
+        }
+
+        .character-image img,
+        .character-image video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 11px;
+        }
+
+        /* Character image glow effects */
+        .character-image.green-glow {
+            /* box-shadow: 
+                0 0 20px rgba(68, 255, 68, 0.8),
+                0 0 40px rgba(68, 255, 68, 0.6),
+                0 0 60px rgba(68, 255, 68, 0.4),
+                0 10px 30px rgba(0, 0, 0, 0.6); */
+            border: 4px solid rgba(68, 255, 68, 0.7);
+        }
+
+        .character-image.red-glow {
+            /* box-shadow: 
+                0 0 20px rgba(255, 68, 68, 0.8),
+                0 0 40px rgba(255, 68, 68, 0.6),
+                0 0 60px rgba(255, 68, 68, 0.4),
+                0 10px 30px rgba(0, 0, 0, 0.6); */
+            border: 4px solid rgba(255, 68, 68, 0.7);
+        }
+
+        .character-image.golden-glow {
+            /* box-shadow: 
+                0 0 20px rgba(255, 215, 0, 0.8),
+                0 0 40px rgba(255, 215, 0, 0.6),
+                0 0 60px rgba(255, 215, 0, 0.4),
+                0 10px 30px rgba(0, 0, 0, 0.6); */
+            border: 4px solid rgba(255, 215, 0, 0.7);
+        }
+
+        /* .character-image::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: rgba(20, 20, 20, 0.5);
+            border-radius: 17px;
+            z-index: -1;
+        } */
+
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .stats-container {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            min-width: 520px;
+            align-items: center;
+        }
+
+        .stat-bar {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: 
+                linear-gradient(145deg, rgba(30, 30, 30, 0.8), rgba(40, 40, 40, 0.6)),
+                url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><defs><pattern id="leather" patternUnits="userSpaceOnUse" width="20" height="20"><rect width="20" height="20" fill="%23666" opacity="0.05"/><circle cx="10" cy="10" r="2" fill="%23444" opacity="0.1"/></pattern></defs><rect width="20" height="20" fill="url(%23leather)"/></svg>');
+            padding: 12px 20px;
+            border-radius: 12px;
+            border: 2px solid rgba(20, 20, 20, 0.5);
+            box-shadow: 
+                inset 0 2px 4px rgba(0, 0, 0, 0.5),
+                0 4px 8px rgba(0, 0, 0, 0.4);
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        /* .stat-bar::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: rgba(20, 20, 20, 0.5);
+            border-radius: 14px;
+            z-index: -1;
+        } */
+
+        .stat-label {
+            font-family: 'Cinzel', serif;
+            font-size: 1.1rem;
+            font-weight: 600;
+            min-width: 80px;
+            text-align: center;
+            color: #ccc;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        .progress-container {
+            flex: 1;
+            background: 
+                linear-gradient(145deg, rgba(0, 0, 0, 0.8), rgba(10, 10, 10, 0.9));
+            border-radius: 8px;
+            height: 25px;
+            overflow: hidden;
+            position: relative;
+            border: 1px solid #444;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.7);
+        }
+
+        .progress-bar {
+            height: 100%;
+            border-radius: 7px;
+            transition: width 2s ease-in-out;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+        }
+
+        .progress-bar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+            animation: shimmer 3s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .shield-bar {
+            background: linear-gradient(90deg, #ffd700 0%, #ffed4e 50%, #daa520 100%);
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.7);
+        }
+
+        .power-bar {
+            background: linear-gradient(90deg, #4a90e2 0%, #7bb3f0 50%, #a8d8ea 100%);
+            box-shadow: 0 0 15px rgba(74, 144, 226, 0.7);
+        }
+
+        .health-bar {
+            background: linear-gradient(90deg, #e74c3c 0%, #c0392b 50%, #a93226 100%);
+            box-shadow: 0 0 15px rgba(231, 76, 60, 0.7);
+        }
+
+        .stat-percentage {
+            font-family: 'Cinzel', serif;
+            font-size: 1.2rem;
+            font-weight: 600;
+            min-width: 60px;
+            text-align: center;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+        }
+
+        .shield-percentage { 
+            color: #ffd700; 
+            text-shadow: 0 0 5px rgba(255, 215, 0, 0.5);
+        }
+        .power-percentage { 
+            color: #4a90e2; 
+            text-shadow: 0 0 5px rgba(74, 144, 226, 0.5);
+        }
+        .health-percentage { 
+            color: #e74c3c; 
+            text-shadow: 0 0 5px rgba(231, 76, 60, 0.5);
+        }
+
+        .portfolio-summary {
+            background: 
+                linear-gradient(145deg, rgba(30, 30, 30, 0.8), rgba(40, 40, 40, 0.6)),
+                url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><defs><pattern id="leather" patternUnits="userSpaceOnUse" width="20" height="20"><rect width="20" height="20" fill="%23666" opacity="0.05"/><circle cx="10" cy="10" r="2" fill="%23444" opacity="0.1"/></pattern></defs><rect width="20" height="20" fill="url(%23leather)"/></svg>');
+            padding: 20px;
+            border-radius: 12px;
+            border: 2px solid rgba(20, 20, 20, 0.5);
+            box-shadow: 
+                inset 0 2px 4px rgba(0, 0, 0, 0.5),
+                0 4px 8px rgba(0, 0, 0, 0.4);
+            position: relative;
+            margin-bottom: 20px;
+        }
+
+        .portfolio-summary::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: rgba(20, 20, 20, 0.5);
+            border-radius: 14px;
+            z-index: -1;
+        }
+
+        .summary-title {
+            font-family: 'Cinzel', serif;
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #ccc;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .summary-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .summary-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 15px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 8px;
+            border: 1px solid rgba(100, 100, 100, 0.3);
+        }
+
+        .summary-label {
+            font-family: 'Crimson Text', serif;
+            font-size: 1rem;
+            color: #e0e0e0;
+        }
+
+        .summary-value {
+            font-family: 'Cinzel', serif;
+            font-size: 1.1rem;
+            font-weight: 600;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+        }
+
+        .portfolio-holdings {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .holding-item {
+            background: 
+                linear-gradient(145deg, rgba(30, 30, 30, 0.7), rgba(40, 40, 40, 0.5));
+            padding: 15px 20px;
+            border-radius: 10px;
+            border: 2px solid rgba(20, 20, 20, 0.5);
+            box-shadow: 
+                inset 0 2px 4px rgba(0, 0, 0, 0.4),
+                0 2px 6px rgba(0, 0, 0, 0.3);
+            position: relative;
+        }
+
+        .holding-item::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: rgba(20, 20, 20, 0.5);
+            border-radius: 12px;
+            z-index: -1;
+        }
+
+        .holding-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .holding-symbol {
+            font-family: 'Cinzel', serif;
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #ccc;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        .holding-price {
+            font-family: 'Crimson Text', serif;
+            font-size: 1.1rem;
+            color: #e0e0e0;
+        }
+
+        .holding-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+        }
+
+        .holding-stat {
+            text-align: center;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 6px;
+            border: 1px solid rgba(100, 100, 100, 0.2);
+        }
+
+        .holding-stat-label {
+            font-family: 'Crimson Text', serif;
+            font-size: 0.9rem;
+            color: #ccc;
+            margin-bottom: 4px;
+        }
+
+        .holding-stat-value {
+            font-family: 'Cinzel', serif;
+            font-size: 1rem;
+            font-weight: 600;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+        }
+
+        .positive-value { color: #27ae60; }
+        .negative-value { color: #e74c3c; }
+        .neutral-value { color: #e0e0e0; }
+        
+        /* Price color coding */
+        .price-green { color: #27ae60; font-weight: bold; }
+        .price-red { color: #e74c3c; font-weight: bold; }
+
+
+        .main-layout {
+            display: flex;
+            gap: 15px;
+            align-items: flex-start;
+        }
+
+        .left-sidebar {
+            flex: 0 0 300px;
+            min-width: 300px;
+        }
+
+        .main-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .ticker-table-container {
+            background: 
+                linear-gradient(145deg, rgba(30, 30, 30, 0.8), rgba(40, 40, 40, 0.6));
+            border: 2px solid rgba(20, 20, 20, 0.5);
+            border-radius: 10px;
+            box-shadow: 
+                inset 0 2px 4px rgba(0, 0, 0, 0.5),
+                0 4px 8px rgba(0, 0, 0, 0.4);
+            overflow: hidden;
+        }
+
+        .ticker-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: rgba(15, 15, 15, 0.5);
+            font-family: 'Crimson Text', serif;
+        }
+
+        .ticker-table th {
+            background: 
+                linear-gradient(145deg, rgba(30, 30, 30, 0.9), rgba(40, 40, 40, 0.7));
+            font-weight: bold;
+            font-family: 'Cinzel', serif;
+            color: #ccc;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+            padding: 12px 8px;
+            text-align: center;
+            border-bottom: 2px solid rgba(20, 20, 20, 0.5);
+            font-size: 0.9rem;
+        }
+
+        .ticker-table td {
+            padding: 10px 8px;
+            text-align: center;
+            border-bottom: 2px solid rgba(100, 100, 100, 0.5);
+            font-size: 0.9rem;
+            color: #e0e0e0;
+        }
+
+        .ticker-table tr:hover {
+            background: rgba(100, 100, 100, 0.1);
+        }
+
+        .ticker-table .summary-row {
+            background: 
+                linear-gradient(145deg, rgba(100, 100, 100, 0.3), rgba(80, 80, 80, 0.2));
+            font-weight: bold;
+            font-family: 'Cinzel', serif;
+            color: #ccc;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        .ticker-table .summary-row td {
+            border-top: 2px solid rgba(20, 20, 20, 0.5);
+            border-bottom: none;
+        }
+
+        /* Color coding for cells */
+        .cell-green { background-color: rgba(39, 174, 96, 0.3); 
+                      
+                    }
+        .cell-yellow { background-color: rgba(241, 196, 15, 0.3); 
+            border: 2px solid rgba(100, 100, 100, 0.5);
+                    }
+        .cell-red { background-color: rgba(231, 76, 60, 0.3); 
+            border: 2px solid rgba(100, 100, 100, 0.5);
+                    }
+        .cell-orange { background-color: rgba(230, 126, 34, 0.3); 
+            border: 2px solid rgba(100, 100, 100, 0.5);
+                    }
+
+        @media (max-width: 768px) {
+            .portfolio-container {
+                padding: 20px;
+                margin: 20px;
+            }
+            
+            .title {
+                font-size: 2rem;
+            }
+            
+            .header > div {
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                align-items: center;
+            }
+            
+            .nav-link, .refresh-btn, .auto-refresh-select {
+                margin: 5px 0;
+                width: 100%;
+                max-width: 300px;
+            }
+            
+            .character-section {
+                flex-direction: column;
+                gap: 20px;
+                text-align: center;
+            }
+            
+            .character-image {
+                width: 150px;
+                height: 225px;
+                font-size: 3rem;
+                margin: 0 auto;
+            }
+            
+            .stats-container {
+                min-width: auto;
+                width: 100%;
+                max-width: 400px;
+                margin: 0 auto;
+            }
+            
+            .stat-bar {
+                flex-direction: column;
+                gap: 10px;
+                text-align: center;
+                max-width: 100%;
+            }
+            
+            .stat-label {
+                min-width: auto;
+            }
+
+            .main-layout {
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            .left-sidebar {
+                flex: none;
+                min-width: auto;
+            }
+
+            .ticker-table th,
+            .ticker-table td {
+                padding: 8px 4px;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+        <div class="portfolio-container">
+        <!-- Glowing runes background for portfolio container -->
+        <!-- <div class="runes-background" id="portfolioRunesBackground"></div> -->
+        <div class="header">
+            <h1 class="title">Wizard Portfolio</h1>
+            <div>
+                <a href="data.html" class="nav-link">⚔️ Portfolio</a>
+                <a href="risk.html" class="nav-link">🛡️ Risk</a>
+                <a href="buy-sell.html" class="nav-link">💰 Buy/Sell</a>
+                <button class="nav-link refresh-btn" onclick="refreshPrices()">🔄 Refresh</button>
+                <select class="nav-link auto-refresh-select" id="autoRefreshSelect" onchange="setAutoRefresh()">
+                    <option value="0">No Auto</option>
+                    <option value="1">1 Minute</option>
+                    <option value="5" selected>5 Minutes</option>
+                    <option value="10">10 Minutes</option>
+                </select>
+                <button class="lightning-toggle-btn" id="lightningToggleBtn" onclick="toggleLightning()">⚡</button>
+            </div>
+        </div>
+        
+        <div class="character-section">
+            <div class="character-image float" id="characterImage">
+                <img id="characterImg" src="images/19.PNG" alt="Character" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <video id="characterVideo" style="display: none;" loop autoplay muted playsinline></video>
+                <div style="display: none; font-size: 4rem;">🧙‍♂️</div>
+            </div>
+            
+            <div class="stats-container">
+                <div class="stat-bar">
+                    <div class="stat-label">Shield</div>
+                    <div class="progress-container">
+                        <div class="progress-bar shield-bar" id="shieldProgressBar" style="width: 0%"></div>
+                    </div>
+                    <div class="stat-percentage shield-percentage" id="shieldPercentage">0%</div>
+                </div>
+                
+                <div class="stat-bar">
+                    <div class="stat-label">Power</div>
+                    <div class="progress-container">
+                        <div class="progress-bar power-bar" id="powerProgressBar" style="width: 0%"></div>
+                    </div>
+                    <div class="stat-percentage power-percentage" id="powerPercentage">0%</div>
+                </div>
+                
+                <div class="stat-bar">
+                    <div class="stat-label">Health</div>
+                    <div class="progress-container">
+                        <div class="progress-bar health-bar" id="healthProgressBar" style="width: 0%"></div>
+                    </div>
+                    <div class="stat-percentage health-percentage" id="healthPercentage">0%</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="main-layout">
+            <div class="left-sidebar">
+                <div class="portfolio-summary">
+                    <h3 class="summary-title">Portfolio Overview</h3>
+                    <div class="summary-stats">
+                        <div class="summary-item">
+                            <span class="summary-label">Today's Change:</span>
+                            <span class="summary-value" id="todayChange">-0.47%</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Today's Gain/Loss:</span>
+                            <span class="summary-value" id="todayGainLoss">$0.00</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Total Gain/Loss:</span>
+                            <span class="summary-value" id="totalGainLoss">8.55%</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Power (Attack):</span>
+                            <span class="summary-value" id="attachValue">0</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Shield (Defense):</span>
+                            <span class="summary-value" id="shieldValue">10</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Last Refreshed:</span>
+                            <span class="summary-value" id="lastRefreshed">Never</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="main-content">
+                <div class="ticker-table-container">
+                    <table class="ticker-table" id="tickerTable">
+                        <thead>
+                            <tr>
+                                <th>Ticker</th>
+                                <th>Price</th>
+                                <th>Total Allocation %</th>
+                                <th>Risk</th>
+                                <th>Today's Gain/Loss %</th>
+                                <th>Total Gain/Loss %</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tickerTableBody">
+                            <!-- Ticker data will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Glowing runes background -->
+    <div class="runes-background" id="runesBackground"></div>
+
+    <script>
+        // Character image mapping based on calculated values
+        const characterImages = {
+            '19': 'images/19.PNG',
+            '19G': 'images/19_GREEN.PNG',
+            '19R': 'images/19_RED.PNG',
+            '19D': 'images/19_DOWN.PNG',
+            '19GD': 'images/19_GREEN_DOWN.PNG',
+            '19RD': 'images/19_RED_DOWN.PNG',
+            '28': 'images/28.PNG',
+            '28G': 'images/28_GREEN.PNG',
+            '28R': 'images/28_RED.PNG',
+            '28D': 'images/28_DOWN.PNG',
+            '28GD': 'images/28_GREEN_DOWN.PNG',
+            '28RD': 'images/28_RED_DOWN.PNG',
+            '37': 'images/37.PNG',
+            '37G': 'images/37_GREEN.PNG',
+            '37R': 'images/37_RED.PNG',
+            '37D': 'images/37_DOWN.PNG',
+            '37GD': 'images/37_GREEN_DOWN.PNG',
+            '37RD': 'images/37_RED_DOWN.PNG',
+            '46': 'images/46.PNG',
+            '46G': 'images/46_GREEN.PNG',
+            '46R': 'images/46_RED.PNG',
+            '46D': 'images/46_DOWN.PNG',
+            '46GD': 'images/46_GREEN_DOWN.PNG',
+            '46RD': 'images/46_RED_DOWN.PNG',
+            '55': 'images/55.PNG',
+            '55G': 'images/55_GREEN.PNG',
+            '55R': 'images/55_RED.PNG',
+            '55D': 'images/55_DOWN.PNG',
+            '55GD': 'images/55_GREEN_DOWN.PNG',
+            '55RD': 'images/55_RED_DOWN.PNG',
+            '64': 'images/64.PNG',
+            '64G': 'images/64_GREEN.PNG',
+            '64R': 'images/64_RED.PNG',
+            '64D': 'images/64_DOWN.PNG',
+            '64GD': 'images/64_GREEN_DOWN.PNG',
+            '64RD': 'images/64_RED_DOWN.PNG',
+            '73': 'images/73.PNG',
+            '73G': 'images/73_GREEN.PNG',
+            '73R': 'images/73_RED.PNG',
+            '73D': 'images/73_DOWN.PNG',
+            '73GD': 'images/73_GREEN_DOWN.PNG',
+            '73RD': 'images/73_RED_DOWN.PNG',
+            '82': 'images/82.PNG',
+            '82G': 'images/82_GREEN.PNG',
+            '82R': 'images/82_RED.PNG',
+            '82D': 'images/82_DOWN.PNG',
+            '82GD': 'images/82_GREEN_DOWN.PNG',
+            '82RD': 'images/82_RED_DOWN.PNG',
+            '91': 'images/91.PNG',
+            '91G': 'images/91_GREEN.PNG',
+            '91R': 'images/91_RED.PNG',
+            '91D': 'images/91_DOWN.PNG',
+            '91GD': 'images/91_GREEN_DOWN.PNG',
+            '91RD': 'images/91_RED_DOWN.PNG'
+        };
+
+        // Calculate character image based on portfolio data
+        function calculateCharacterImage(portfolioData) {
+            if (!portfolioData || portfolioData.length === 0) {
+                return '19'; // Default to normal 19
+            }
+
+            // Calculate portfolio stats to get Attach and Shield values
+            const stats = calculatePortfolioStats(portfolioData);
+            
+            // Get Attach and Shield values
+            const attach = stats.attach; // This is the Attach value
+            const shield = stats.shield; // This is the Shield value
+            const health = stats.health; // This is the Health value
+            
+            // Create the base lookup key using Attach and Shield: Attach + Shield
+            const baseLookupKey = attach.toString() + shield.toString();
+            
+            // Determine if we should use GREEN (G) or RED (R) variant based on today's change
+            let finalLookupKey = baseLookupKey;
+            
+            if (stats.todayChange > 0) {
+                // Today's change is above 0% - use GREEN variant
+                finalLookupKey = baseLookupKey + 'G';
+                console.log(`Attach: ${attach}, Shield: ${shield}, Today's change: ${stats.todayChange.toFixed(2)}% > 0% - Using GREEN variant: ${finalLookupKey}`);
+            } else if (stats.todayChange < -1) {
+                // Today's change is below -1% - use RED variant
+                finalLookupKey = baseLookupKey + 'R';
+                console.log(`Attach: ${attach}, Shield: ${shield}, Today's change: ${stats.todayChange.toFixed(2)}% < -1% - Using RED variant: ${finalLookupKey}`);
+            } else {
+                console.log(`Attach: ${attach}, Shield: ${shield}, Today's change: ${stats.todayChange.toFixed(2)}% between -1% and 1% - Using base image: ${finalLookupKey}`);
+            }
+            // If today's change is between -1% and 1%, use the base image (no G or R suffix)
+            
+            // Check if health is at 0% or below - if so, use _DOWN variant
+            if (health <= 0) {
+                finalLookupKey = finalLookupKey + 'D';
+                console.log(`Health: ${health.toFixed(2)}% <= 0% - Using DOWN variant: ${finalLookupKey}`);
+            }
+            
+            // VLOOKUP equivalent - find the closest match
+            const availableKeys = Object.keys(characterImages);
+            let bestMatch = '19'; // Default fallback
+            
+            // Try exact match first
+            if (characterImages[finalLookupKey]) {
+                return finalLookupKey;
+            }
+            
+            // If the specific variant doesn't exist, try the base image
+            if (characterImages[baseLookupKey]) {
+                return baseLookupKey;
+            }
+            
+            // Find closest match based on the first two digits (Attach + Shield)
+            const targetPrefix = baseLookupKey;
+            for (const key of availableKeys) {
+                if (key.startsWith(targetPrefix)) {
+                    bestMatch = key;
+                    break;
+                }
+            }
+            
+            return bestMatch;
+        }
+
+        // Helper function to apply glow effects
+        function applyGlowEffects(condition, characterImageContainer) {
+            characterImageContainer.classList.remove('green-glow', 'red-glow', 'golden-glow');
+            
+            if (condition.endsWith('GD')) {
+                characterImageContainer.classList.add('green-glow');
+            } else if (condition.endsWith('RD')) {
+                characterImageContainer.classList.add('red-glow');
+            } else if (condition.endsWith('D')) {
+                characterImageContainer.classList.add('golden-glow');
+            } else if (condition.endsWith('G')) {
+                characterImageContainer.classList.add('green-glow');
+            } else if (condition.endsWith('R')) {
+                characterImageContainer.classList.add('red-glow');
+            } else {
+                characterImageContainer.classList.add('golden-glow');
+            }
+        }
+
+        // Update character image based on calculated values
+        function updateCharacterImage(portfolioData) {
+            const condition = calculateCharacterImage(portfolioData);
+            const characterImg = document.getElementById('characterImg');
+            const characterVideo = document.getElementById('characterVideo');
+            const characterImageContainer = document.getElementById('characterImage');
+            const fallbackDiv = characterImg.nextElementSibling.nextElementSibling;
+            
+            // Remove existing glow classes
+            characterImageContainer.classList.remove('green-glow', 'red-glow', 'golden-glow');
+            
+            // Check if mp4 video exists for this condition
+            // Get the PNG path and derive the MP4 path from it
+            let videoPath = null;
+            if (characterImages[condition]) {
+                // Extract base filename from PNG path (e.g., 'images/64_RED.PNG' -> '64_RED')
+                const pngPath = characterImages[condition];
+                const baseFilename = pngPath.replace(/^images\//, '').replace(/\.PNG$/i, '');
+                videoPath = `images/${baseFilename}.mp4`;
+            } else {
+                // Fallback to condition-based path if no PNG mapping exists
+                videoPath = `images/${condition}.mp4`;
+            }
+            
+            // Hide both initially
+            characterImg.style.display = 'none';
+            characterVideo.style.display = 'none';
+            fallbackDiv.style.display = 'none';
+            
+            // Ensure video attributes are set
+            characterVideo.setAttribute('loop', '');
+            characterVideo.setAttribute('autoplay', '');
+            characterVideo.setAttribute('muted', '');
+            characterVideo.setAttribute('playsinline', '');
+            
+            // Try to load video first
+            let resolved = false;
+            
+            // Clear any existing event listeners by removing and re-adding the video element
+            const videoParent = characterVideo.parentNode;
+            const newVideo = document.createElement('video');
+            newVideo.id = 'characterVideo';
+            newVideo.setAttribute('loop', '');
+            newVideo.setAttribute('autoplay', '');
+            newVideo.setAttribute('muted', '');
+            newVideo.setAttribute('playsinline', '');
+            newVideo.style.display = 'none';
+            videoParent.replaceChild(newVideo, characterVideo);
+            const videoEl = document.getElementById('characterVideo');
+            
+            const showVideo = () => {
+                if (resolved) return;
+                resolved = true;
+                console.log('Video loaded successfully:', videoPath);
+                characterImg.style.display = 'none';
+                videoEl.style.display = 'block';
+                fallbackDiv.style.display = 'none';
+                
+                // Remove float animation for videos
+                characterImageContainer.classList.remove('float');
+                
+                // Ensure video plays
+                videoEl.muted = true; // Ensure muted for autoplay
+                const playPromise = videoEl.play();
+                if (playPromise !== undefined) {
+                    playPromise.then(() => {
+                        console.log('Video playing successfully');
+                    }).catch(e => {
+                        console.log('Video autoplay prevented:', e);
+                        // Video is muted, should work
+                        videoEl.play().catch(err => console.log('Video play failed:', err));
+                    });
+                }
+                
+                applyGlowEffects(condition, characterImageContainer);
+                updateRunesBackground(condition);
+            };
+            
+            const showImageFallback = () => {
+                if (resolved) return;
+                resolved = true;
+                console.log('Video not found, showing image:', videoPath);
+                showImage(condition, characterImg, videoEl, fallbackDiv, characterImageContainer);
+            };
+            
+            // Add event listeners
+            videoEl.addEventListener('loadeddata', showVideo, { once: true });
+            videoEl.addEventListener('canplay', showVideo, { once: true });
+            videoEl.addEventListener('error', showImageFallback, { once: true });
+            
+            // Set timeout fallback
+            setTimeout(() => {
+                if (!resolved) {
+                    showImageFallback();
+                }
+            }, 1000);
+            
+            // Try to load the video
+            console.log('Attempting to load video:', videoPath);
+            videoEl.src = videoPath;
+            videoEl.load();
+            
+            // Also try to play immediately if already loaded
+            if (videoEl.readyState >= 2) {
+                showVideo();
+            }
+        }
+        
+        // Helper function to show image
+        function showImage(condition, characterImg, characterVideo, fallbackDiv, characterImageContainer) {
+            if (characterImages[condition]) {
+                characterImg.src = characterImages[condition];
+                characterImg.style.display = 'block';
+                characterVideo.style.display = 'none';
+                fallbackDiv.style.display = 'none';
+                
+                // Add float animation for PNG images
+                characterImageContainer.classList.add('float');
+                
+                // Apply glow effects
+                applyGlowEffects(condition, characterImageContainer);
+            } else {
+                // Fallback to emoji if image not found
+                characterImg.style.display = 'none';
+                characterVideo.style.display = 'none';
+                fallbackDiv.style.display = 'flex';
+                
+                // Add float animation for fallback emoji too
+                characterImageContainer.classList.add('float');
+                
+                // Apply golden glow for fallback
+                characterImageContainer.classList.add('golden-glow');
+            }
+            
+            // Update runes background
+            updateRunesBackground(condition);
+        }
+
+        // Rune symbols for magical effect
+        const runeSymbols = ['ᚠ', 'ᚢ', 'ᚦ', 'ᚨ', 'ᚱ', 'ᚲ', 'ᚷ', 'ᚹ', 'ᚺ', 'ᚾ', 'ᛁ', 'ᛃ', 'ᛇ', 'ᛈ', 'ᛉ', 'ᛊ', 'ᛏ', 'ᛒ', 'ᛖ', 'ᛗ', 'ᛚ', 'ᛜ', 'ᛞ', 'ᛟ'];
+
+        // Create glowing runes in the background
+        function createRunes(runeType, count = 15) {
+            const runesBackground = document.getElementById('runesBackground');
+            // const portfolioRunesBackground = document.getElementById('portfolioRunesBackground');
+            
+            // Clear existing runes
+            runesBackground.innerHTML = '';
+            // portfolioRunesBackground.innerHTML = '';
+            
+            // Create runes for main background
+            for (let i = 0; i < count; i++) {
+                const rune = document.createElement('div');
+                rune.className = `rune ${runeType}-rune rune-symbols`;
+                
+                // Random rune symbol
+                const symbol = runeSymbols[Math.floor(Math.random() * runeSymbols.length)];
+                rune.textContent = symbol;
+                
+                // Random position
+                const x = Math.random() * 100;
+                const y = Math.random() * 100;
+                rune.style.left = x + '%';
+                rune.style.top = y + '%';
+                
+                // Random animation delay
+                rune.style.animationDelay = Math.random() * 4 + 's';
+                
+                // Random size variation
+                const size = 1.5 + Math.random() * 1;
+                rune.style.fontSize = size + 'rem';
+                
+                runesBackground.appendChild(rune);
+            }
+            
+            /* Create runes for portfolio container (same count as main background)
+            const portfolioCount = count;
+            for (let i = 0; i < portfolioCount; i++) {
+                const rune = document.createElement('div');
+                rune.className = `rune ${runeType}-rune rune-symbols`;
+                
+                // Random rune symbol
+                const symbol = runeSymbols[Math.floor(Math.random() * runeSymbols.length)];
+                rune.textContent = symbol;
+                
+                // Random position within portfolio container
+                const x = Math.random() * 100;
+                const y = Math.random() * 100;
+                rune.style.left = x + '%';
+                rune.style.top = y + '%';
+                
+                // Random animation delay
+                rune.style.animationDelay = Math.random() * 4 + 's';
+                
+                // Smaller size for portfolio container
+                const size = 1 + Math.random() * 0.5;
+                rune.style.fontSize = size + 'rem';
+                
+                portfolioRunesBackground.appendChild(rune);
+            } */
+        }
+
+        // Update runes background based on character image type and Today's Change percentage intensity
+        function updateRunesBackground(condition) {
+            // Get portfolio stats to determine intensity based on Today's Change percentage
+            const portfolioData = loadPortfolioData();
+            const stats = calculatePortfolioStats(portfolioData);
+            const todayChangePercent = Math.abs(stats.todayChange); // Today's Change percentage
+            
+            // Calculate intensity multiplier based on Today's Change percentage magnitude
+            // Higher absolute Today's Change percentages = more dramatic effects
+            let intensityMultiplier = 1;
+            if (todayChangePercent > 5) {
+                intensityMultiplier = 3; // Very high volatility (>5% change)
+            } else if (todayChangePercent > 3) {
+                intensityMultiplier = 2.5; // High volatility (>3% change)
+            } else if (todayChangePercent > 1) {
+                intensityMultiplier = 2; // Medium volatility (>1% change)
+            } else if (todayChangePercent > 0.5) {
+                intensityMultiplier = 1.5; // Low volatility (>0.5% change)
+            }
+            
+            // Base rune count and lightning frequency
+            const baseRuneCount = 50;
+            const runeCount = Math.floor(baseRuneCount * intensityMultiplier);
+            
+            // Check if lightning is enabled
+            const lightningEnabled = localStorage.getItem('lightningEnabled') === 'true';
+            
+            if (condition.endsWith('RD')) {
+                // Red runes for RD (red down) character images - more intense for negative Today's Change
+                createRunes('red', runeCount);
+                if (lightningEnabled) {
+                    startLightningBolts('red', intensityMultiplier);
+                }
+            } else if (condition.endsWith('GD')) {
+                // Green runes for GD (green down) character images - more intense for positive Today's Change
+                createRunes('green', runeCount);
+                if (lightningEnabled) {
+                    startLightningBolts('green', intensityMultiplier);
+                }
+            } else if (condition.endsWith('D')) {
+                // Gold runes for D (down) character images
+                createRunes('gold', runeCount);
+                if (lightningEnabled) {
+                    startLightningBolts('gold', intensityMultiplier);
+                }
+            } else if (condition.endsWith('R')) {
+                // Red runes for R (red) character images - more intense for negative Today's Change
+                createRunes('red', runeCount);
+                if (lightningEnabled) {
+                    startLightningBolts('red', intensityMultiplier);
+                }
+            } else if (condition.endsWith('G')) {
+                // Green runes for G (green) character images - more intense for positive Today's Change
+                createRunes('green', runeCount);
+                if (lightningEnabled) {
+                    startLightningBolts('green', intensityMultiplier);
+                }
+            } else {
+                // Gold runes for normal character images
+                createRunes('gold', runeCount);
+                if (lightningEnabled) {
+                    startLightningBolts('gold', intensityMultiplier);
+                }
+            }
+        }
+
+        // Create fractal lightning bolt starting from edge with intensity
+        function createFractalLightning(lightningType, intensityMultiplier = 1) {
+            const runesBackground = document.getElementById('runesBackground');
+            const lightning = document.createElement('div');
+            lightning.className = `lightning-bolt ${lightningType}-lightning`;
+            
+            // Get viewport dimensions
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            
+            // Create multiple lightning bolts from different edges based on intensity
+            const baseBolts = 2;
+            const maxBolts = Math.floor(baseBolts * intensityMultiplier) + Math.floor(Math.random() * 3);
+            const numBolts = Math.min(maxBolts, 8); // Cap at 8 bolts maximum
+            
+            for (let i = 0; i < numBolts; i++) {
+                // Randomly choose which edge to start from
+                const edge = Math.floor(Math.random() * 4); // 0=top, 1=right, 2=bottom, 3=left
+                let startX, startY;
+                
+                switch (edge) {
+                    case 0: // Top edge
+                        startX = Math.random() * viewportWidth;
+                        startY = 0;
+                        break;
+                    case 1: // Right edge
+                        startX = viewportWidth;
+                        startY = Math.random() * viewportHeight;
+                        break;
+                    case 2: // Bottom edge
+                        startX = Math.random() * viewportWidth;
+                        startY = viewportHeight;
+                        break;
+                    case 3: // Left edge
+                        startX = 0;
+                        startY = Math.random() * viewportHeight;
+                        break;
+                }
+                
+                // Multiple target points for more complex patterns
+                const targets = [
+                    { x: viewportWidth / 2, y: viewportHeight / 2 }, // Center
+                    { x: viewportWidth * 0.3, y: viewportHeight * 0.3 }, // Top-left area
+                    { x: viewportWidth * 0.7, y: viewportHeight * 0.3 }, // Top-right area
+                    { x: viewportWidth * 0.3, y: viewportHeight * 0.7 }, // Bottom-left area
+                    { x: viewportWidth * 0.7, y: viewportHeight * 0.7 }  // Bottom-right area
+                ];
+                
+                const target = targets[Math.floor(Math.random() * targets.length)];
+                
+                // Create fractal lightning tree with increased complexity based on intensity
+                const maxDepth = Math.min(8 + Math.floor(intensityMultiplier * 2), 12); // Deeper fractals for higher intensity
+                createLightningBranch(lightning, startX, startY, target.x, target.y, lightningType, 0, maxDepth);
+            }
+            
+            runesBackground.appendChild(lightning);
+            
+            // Remove after animation completes
+            setTimeout(() => {
+                if (lightning.parentNode) {
+                    lightning.parentNode.removeChild(lightning);
+                }
+            }, 1200);
+        }
+
+        // Create a lightning branch (recursive fractal)
+        function createLightningBranch(container, startX, startY, targetX, targetY, lightningType, depth, maxDepth) {
+            if (depth >= maxDepth) return;
+            
+            // Calculate distance and direction to target
+            const dx = targetX - startX;
+            const dy = targetY - startY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // If we're close enough to target, stop branching
+            if (distance < 30) return;
+            
+            // More aggressive randomness for deeper fractals
+            const angle = Math.atan2(dy, dx);
+            const randomAngle = angle + (Math.random() - 0.5) * Math.PI / 2; // ±45 degrees
+            const segmentLength = Math.min(distance * (0.2 + Math.random() * 0.3), 80 + Math.random() * 120);
+            
+            const endX = startX + Math.cos(randomAngle) * segmentLength;
+            const endY = startY + Math.sin(randomAngle) * segmentLength;
+            
+            // Create lightning segment with varied thickness
+            const segment = document.createElement('div');
+            segment.className = 'lightning-segment';
+            
+            // Calculate segment properties
+            const actualSegmentLength = Math.sqrt((endX - startX) ** 2 + (endY - startY) ** 2);
+            const segmentAngle = Math.atan2(endY - startY, endX - startX) * 180 / Math.PI;
+            
+            // Varied thickness based on depth (thicker at base, thinner at tips)
+            const thickness = Math.max(1, 6 - depth * 0.8 + Math.random() * 2);
+            
+            // Position and style the segment
+            segment.style.left = startX + 'px';
+            segment.style.top = startY + 'px';
+            segment.style.width = actualSegmentLength + 'px';
+            segment.style.height = thickness + 'px';
+            segment.style.transformOrigin = '0 50%';
+            segment.style.transform = `rotate(${segmentAngle}deg)`;
+            
+            // Add slight opacity variation for more organic look
+            segment.style.opacity = 0.8 + Math.random() * 0.2;
+            
+            container.appendChild(segment);
+            
+            // Create multiple branches for more complex fractals
+            if (depth < maxDepth - 1) {
+                // Main branch continues toward target (higher probability)
+                if (Math.random() < 0.8) {
+                    createLightningBranch(container, endX, endY, targetX, targetY, lightningType, depth + 1, maxDepth);
+                }
+                
+                // Multiple side branches with different probabilities
+                const numSideBranches = Math.floor(Math.random() * 4); // 0-3 side branches
+                
+                for (let i = 0; i < numSideBranches; i++) {
+                    if (Math.random() < 0.6) { // 60% chance for each potential branch
+                        const sideAngle = randomAngle + (Math.random() - 0.5) * Math.PI * (0.5 + Math.random() * 0.5);
+                        const sideLength = segmentLength * (0.2 + Math.random() * 0.6);
+                        const sideEndX = endX + Math.cos(sideAngle) * sideLength;
+                        const sideEndY = endY + Math.sin(sideAngle) * sideLength;
+                        
+                        // Create sub-branches with reduced max depth
+                        createLightningBranch(container, endX, endY, sideEndX, sideEndY, lightningType, depth + 1, maxDepth - 1);
+                    }
+                }
+                
+                // Occasionally create micro-branches (very short, thin branches)
+                if (Math.random() < 0.3 && depth < maxDepth - 2) {
+                    const microAngle = randomAngle + (Math.random() - 0.5) * Math.PI;
+                    const microLength = segmentLength * (0.1 + Math.random() * 0.2);
+                    const microEndX = endX + Math.cos(microAngle) * microLength;
+                    const microEndY = endY + Math.sin(microAngle) * microLength;
+                    
+                    // Create very short micro-branch
+                    const microSegment = document.createElement('div');
+                    microSegment.className = 'lightning-segment';
+                    const microSegmentLength = Math.sqrt((microEndX - endX) ** 2 + (microEndY - endY) ** 2);
+                    const microSegmentAngle = Math.atan2(microEndY - endY, microEndX - endX) * 180 / Math.PI;
+                    
+                    microSegment.style.left = endX + 'px';
+                    microSegment.style.top = endY + 'px';
+                    microSegment.style.width = microSegmentLength + 'px';
+                    microSegment.style.height = '1px';
+                    microSegment.style.transformOrigin = '0 50%';
+                    microSegment.style.transform = `rotate(${microSegmentAngle}deg)`;
+                    microSegment.style.opacity = 0.6;
+                    
+                    container.appendChild(microSegment);
+                }
+            }
+        }
+
+        // Start lightning bolt effects with intensity multiplier
+        function startLightningBolts(lightningType, intensityMultiplier = 1) {
+            // Clear any existing lightning intervals
+            if (window.lightningInterval) {
+                clearInterval(window.lightningInterval);
+            }
+            
+            // Calculate lightning frequency based on intensity
+            // Higher intensity = more frequent lightning strikes
+            const baseChance = 0.2; // 20% base chance
+            const lightningChance = Math.min(baseChance * intensityMultiplier, 0.8); // Cap at 80%
+            const intervalTime = Math.max(1000 / intensityMultiplier, 200); // Faster intervals for higher intensity
+            
+            // Create fractal lightning bolts at random intervals
+            window.lightningInterval = setInterval(() => {
+                // Random chance to create lightning based on intensity
+                if (Math.random() < lightningChance) {
+                    createFractalLightning(lightningType, intensityMultiplier);
+                }
+            }, intervalTime);
+        }
+
+        // Stop lightning bolt effects
+        function stopLightningBolts() {
+            if (window.lightningInterval) {
+                clearInterval(window.lightningInterval);
+                window.lightningInterval = null;
+            }
+        }
+
+        // Lightning toggle functionality
+        function toggleLightning() {
+            const button = document.getElementById('lightningToggleBtn');
+            const isActive = button.classList.contains('active');
+            
+            if (isActive) {
+                // Turn off lightning effects
+                stopLightningBolts();
+                button.classList.remove('active');
+                button.textContent = '⚡';
+                localStorage.setItem('lightningEnabled', 'false');
+            } else {
+                // Turn on lightning effects
+                const portfolioData = loadPortfolioData();
+                const stats = calculatePortfolioStats(portfolioData);
+                const todayChangePercent = Math.abs(stats.todayChange);
+                
+                // Calculate intensity multiplier based on Today's Change percentage magnitude
+                let intensityMultiplier = 1;
+                if (todayChangePercent > 5) {
+                    intensityMultiplier = 3;
+                } else if (todayChangePercent > 3) {
+                    intensityMultiplier = 2.5;
+                } else if (todayChangePercent > 1) {
+                    intensityMultiplier = 2;
+                } else if (todayChangePercent > 0.5) {
+                    intensityMultiplier = 1.5;
+                }
+                
+                // Get current character condition to determine lightning type
+                const condition = calculateCharacterImage(portfolioData);
+                
+                if (condition.endsWith('RD')) {
+                    startLightningBolts('red', intensityMultiplier);
+                } else if (condition.endsWith('GD')) {
+                    startLightningBolts('green', intensityMultiplier);
+                } else if (condition.endsWith('D')) {
+                    startLightningBolts('gold', intensityMultiplier);
+                } else if (stats.todayChange > 1) {
+                    startLightningBolts('green', intensityMultiplier);
+                } else if (stats.todayChange < -1) {
+                    startLightningBolts('red', intensityMultiplier);
+                } else {
+                    startLightningBolts('gold', intensityMultiplier);
+                }
+                
+                button.classList.add('active');
+                button.textContent = '⚡';
+                localStorage.setItem('lightningEnabled', 'true');
+            }
+        }
+
+        // Initialize lightning toggle state
+        function initializeLightningToggle() {
+            const button = document.getElementById('lightningToggleBtn');
+            const lightningEnabled = localStorage.getItem('lightningEnabled');
+            
+            // Default to ON if no preference is set
+            if (lightningEnabled === null || lightningEnabled === 'true') {
+                button.classList.add('active');
+                button.textContent = '⚡';
+                localStorage.setItem('lightningEnabled', 'true');
+            } else {
+                button.classList.remove('active');
+                button.textContent = '⚡';
+            }
+        }
+
+        // Load portfolio data from localStorage
+        function loadPortfolioData() {
+            const saved = localStorage.getItem('portfolioData');
+            if (saved) {
+                return JSON.parse(saved);
+            }
+            return [];
+        }
+
+        // Load risk data from localStorage
+        function loadRiskData() {
+            const saved = localStorage.getItem('riskData');
+            if (saved) {
+                return JSON.parse(saved);
+            }
+            return [];
+        }
+
+        // Get risk level for a ticker symbol
+        function getRiskLevel(ticker) {
+            const riskData = loadRiskData();
+            const riskEntry = riskData.find(entry => entry.ticker.toUpperCase() === ticker.toUpperCase());
+            return riskEntry ? riskEntry.riskLevel : 5; // Default to 5 if not found
+        }
+
+
+        // Calculate portfolio statistics
+        function calculatePortfolioStats(portfolioData) {
+            if (!portfolioData || portfolioData.length === 0) {
+                return {
+                    todayChange: 0,
+                    totalGainLoss: 0,
+                    attach: 0
+                };
+            }
+
+            const totalValue = portfolioData.reduce((sum, entry) => sum + (entry.value || 0), 0);
+            
+            // Calculate today's change using SUMPRODUCT(Total Allocation %, Today's Gain/Loss %)
+            let sumproductTodayChange = 0;
+            portfolioData.forEach((entry) => {
+                if (entry.currentPrice && entry.previousClose && entry.shares) {
+                    // Calculate allocation percentage
+                    const allocationPercent = totalValue > 0 ? (entry.value / totalValue) * 100 : 0;
+                    
+                    // Calculate today's gain/loss percentage: ((current price - previous close) / current price) * 100
+                    const priceChange = entry.currentPrice - entry.previousClose;
+                    const todayGainLossPercent = entry.currentPrice ? (priceChange / entry.currentPrice) * 100 : 0;
+                    
+                    // SUMPRODUCT: allocation_percent * today_gain_loss_percent
+                    sumproductTodayChange += (allocationPercent / 100) * todayGainLossPercent;
+                }
+                // CASH entries contribute 0 to today's change
+            });
+            
+            // Calculate Total Gain/Loss using SUMPRODUCT formula
+            // SUMPRODUCT(Total Gain/Loss % column, Total Allocation % column)
+            let totalGainLoss = 0;
+            portfolioData.forEach((entry) => {
+                const allocationPercent = totalValue > 0 ? (entry.value / totalValue) * 100 : 0;
+                const gainLossPercent = entry.totalGainLoss && entry.paid ? (entry.totalGainLoss / entry.paid) * 100 : 0;
+                // SUMPRODUCT: gain_loss_percent * allocation_percent
+                totalGainLoss += (gainLossPercent / 100) * allocationPercent;
+            });
+
+            // Calculate Attach variable using SUMPRODUCT(L13:L20, M13:M20)
+            // L13:L20 = Total Allocation % (allocation percentages)
+            // M13:M20 = Risk (risk levels)
+            let attach = 0;
+            portfolioData.forEach((entry) => {
+                const allocationPercent = totalValue > 0 ? (entry.value / totalValue) * 100 : 0;
+                const risk = getRiskLevel(entry.symbol);
+                attach += (allocationPercent / 100) * risk;
+            });
+
+            // Calculate today's gain/loss in dollars
+            let todayGainLossDollars = 0;
+            portfolioData.forEach((entry) => {
+                if (entry.todayChange !== undefined) {
+                    todayGainLossDollars += entry.todayChange;
+                }
+            });
+
+            return {
+                todayChange: sumproductTodayChange,
+                todayGainLossDollars: todayGainLossDollars,
+                totalGainLoss: totalGainLoss,
+                attach: Math.floor(attach),
+                shield: 10 - Math.floor(attach),
+                power: attach / 9,
+                health: totalGainLoss + 0
+            };
+        }
+
+        // Display ticker table
+        function displayTickerTable(portfolioData) {
+            const tableBody = document.getElementById('tickerTableBody');
+            tableBody.innerHTML = '';
+
+            if (!portfolioData || portfolioData.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">No Portfolio Data - Add data in the management page</td></tr>';
+                return;
+            }
+
+            // Calculate total portfolio value for allocation percentages
+            const totalPortfolioValue = portfolioData.reduce((sum, entry) => sum + (entry.value || 0), 0);
+
+            portfolioData.forEach((entry, index) => {
+                const row = document.createElement('tr');
+                
+                const currentPrice = entry.symbol === 'CASH' ? '0.00' : (entry.currentPrice ? entry.currentPrice.toFixed(2) : 'Loading...');
+                const allocation = totalPortfolioValue > 0 
+                    ? ((entry.value / totalPortfolioValue) * 100).toFixed(2) + '%'
+                    : '0.00%';
+                const risk = getRiskLevel(entry.symbol);
+                // Calculate today's gain/loss percentage based on current price vs previous day's closing price
+                let todayGainLoss = '0.00%';
+                if (entry.currentPrice && entry.previousClose && entry.shares) {
+                    // Formula: ((current price - previous close) / current price) * 100
+                    const priceChange = entry.currentPrice - entry.previousClose;
+                    todayGainLoss = entry.currentPrice ? ((priceChange / entry.currentPrice) * 100).toFixed(2) + '%' : '0.00%';
+                }
+                const totalGainLoss = entry.totalGainLoss && entry.paid ? ((entry.totalGainLoss / entry.paid) * 100).toFixed(2) + '%' : '0.00%';
+
+                // Color coding logic
+                const allocationNum = parseFloat(allocation);
+                const todayGainLossNum = parseFloat(todayGainLoss);
+                const totalGainLossNum = parseFloat(totalGainLoss);
+
+                const allocationColor = allocationNum <= 20 ? 'cell-green' : allocationNum <= 25 ? 'cell-yellow' : 'cell-red';
+                const riskColor = risk <= 4 ? 'cell-green' : risk <= 6 ? 'cell-yellow' : 'cell-red';
+                const todayColor = todayGainLossNum >= 0 ? 'cell-green' : 'cell-yellow';
+                const totalColor = totalGainLossNum >= 0 ? 'cell-green' : totalGainLossNum >= -1 ? 'cell-red' : 'cell-red';
+
+                // Price color coding based on current price vs previous close
+                let priceColorClass = '';
+                if (entry.currentPrice && entry.previousClose) {
+                    if (entry.currentPrice > entry.previousClose) {
+                        priceColorClass = 'price-green';
+                    } else if (entry.currentPrice < entry.previousClose) {
+                        priceColorClass = 'price-red';
+                    }
+                }
+
+                row.innerHTML = `
+                    <td><strong>${entry.symbol || ''}</strong></td>
+                    <td class="${priceColorClass}">${currentPrice}</td>
+                    <td class="${allocationColor}">${allocation}</td>
+                    <td class="${riskColor}">${risk}</td>
+                    <td class="${todayColor}">${todayGainLoss}</td>
+                    <td class="${totalColor}">${totalGainLoss}</td>
+                `;
+
+                tableBody.appendChild(row);
+            });
+
+            // Add summary row
+            const summaryRow = document.createElement('tr');
+            summaryRow.className = 'summary-row';
+            
+            const stats = calculatePortfolioStats(portfolioData);
+            const todayChangeNum = parseFloat(stats.todayChange.toFixed(2));
+            const totalGainLossNum = parseFloat(stats.totalGainLoss.toFixed(2));
+            
+            const todaySummaryColor = todayChangeNum >= 0 ? 'cell-green' : 'cell-yellow';
+            const totalSummaryColor = totalGainLossNum >= 0 ? 'cell-green' : 'cell-orange';
+
+            summaryRow.innerHTML = `
+                <td><strong>TOTAL</strong></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td class="${todaySummaryColor}">${stats.todayChange.toFixed(2)}%</td>
+                <td class="${totalSummaryColor}">${stats.totalGainLoss.toFixed(2)}%</td>
+            `;
+
+            tableBody.appendChild(summaryRow);
+        }
+
+        // Update portfolio summary
+        function updatePortfolioSummary(stats) {
+            document.getElementById('todayChange').textContent = stats.todayChange.toFixed(2) + '%';
+            document.getElementById('todayGainLoss').textContent = '$' + stats.todayGainLossDollars.toFixed(2);
+            document.getElementById('totalGainLoss').textContent = stats.totalGainLoss.toFixed(2) + '%';
+            document.getElementById('attachValue').textContent = stats.attach.toString();
+            document.getElementById('shieldValue').textContent = stats.shield.toString();
+
+            // Update Shield progress bar based on Shield variable / 10
+            const shieldProgressPercent = (stats.shield / 10) * 100;
+            document.getElementById('shieldProgressBar').style.width = shieldProgressPercent + '%';
+            document.getElementById('shieldPercentage').textContent = shieldProgressPercent.toFixed(0) + '%';
+
+            // Update Power progress bar based on Power variable as percentage
+            const powerProgressPercent = stats.power * 100;
+            document.getElementById('powerProgressBar').style.width = powerProgressPercent + '%';
+            document.getElementById('powerPercentage').textContent = powerProgressPercent.toFixed(1) + '%';
+
+            // Update Health progress bar based on Health variable as percentage
+            const healthProgressPercent = stats.health;
+            document.getElementById('healthProgressBar').style.width = healthProgressPercent + '%';
+            document.getElementById('healthPercentage').textContent = healthProgressPercent.toFixed(1) + '%';
+
+            // Update colors based on values
+            const todayChangeElement = document.getElementById('todayChange');
+            const todayGainLossElement = document.getElementById('todayGainLoss');
+            const totalGainLossElement = document.getElementById('totalGainLoss');
+            const attachElement = document.getElementById('attachValue');
+            const shieldElement = document.getElementById('shieldValue');
+            
+            todayChangeElement.className = 'summary-value ' + (stats.todayChange >= 0 ? 'positive-value' : 'negative-value');
+            todayGainLossElement.className = 'summary-value ' + (stats.todayGainLossDollars >= 0 ? 'positive-value' : 'negative-value');
+            totalGainLossElement.className = 'summary-value ' + (stats.totalGainLoss >= 0 ? 'positive-value' : 'negative-value');
+            
+            // Color code Attach value based on risk level
+            if (stats.attach <= 3) {
+                attachElement.className = 'summary-value positive-value';
+            } else if (stats.attach <= 6) {
+                attachElement.className = 'summary-value neutral-value';
+            } else {
+                attachElement.className = 'summary-value negative-value';
+            }
+            
+            // Color code Shield value (inverse of Attach - higher is better)
+            if (stats.shield >= 7) {
+                shieldElement.className = 'summary-value positive-value';
+            } else if (stats.shield >= 4) {
+                shieldElement.className = 'summary-value neutral-value';
+            } else {
+                shieldElement.className = 'summary-value negative-value';
+            }
+        }
+
+        // Get Attach variable value (background variable)
+        function getAttachValue() {
+            const portfolioData = loadPortfolioData();
+            const stats = calculatePortfolioStats(portfolioData);
+            return stats.attach;
+        }
+
+        // Get Shield variable value (background variable)
+        function getShieldValue() {
+            const portfolioData = loadPortfolioData();
+            const stats = calculatePortfolioStats(portfolioData);
+            return stats.shield;
+        }
+
+        // Get Power variable value (background variable)
+        function getPowerValue() {
+            const portfolioData = loadPortfolioData();
+            const stats = calculatePortfolioStats(portfolioData);
+            return stats.power;
+        }
+
+        // Get Health variable value (background variable)
+        function getHealthValue() {
+            const portfolioData = loadPortfolioData();
+            const stats = calculatePortfolioStats(portfolioData);
+            return stats.health;
+        }
+
+        // Make variables globally accessible
+        window.Attach = getAttachValue;
+        window.Shield = getShieldValue;
+        window.Power = getPowerValue;
+        window.Health = getHealthValue;
+
+        // Debug: Log variable values to console
+        console.log('Attach variable created. Current value:', getAttachValue());
+        console.log('Shield variable created. Current value:', getShieldValue());
+        console.log('Power variable created. Current value:', getPowerValue());
+        console.log('Health variable created. Current value:', getHealthValue());
+
+        // Automatically fetch current prices silently
+        async function autoFetchCurrentPrices(portfolioData) {
+            try {
+                // Get all unique symbols that are not CASH
+                const symbols = [...new Set(portfolioData
+                    .filter(entry => entry.symbol && entry.symbol !== 'CASH')
+                    .map(entry => entry.symbol.toUpperCase())
+                )];
+                
+                if (symbols.length === 0) {
+                    return; // No symbols to fetch
+                }
+                
+                // Fetch prices for each symbol
+                const pricePromises = symbols.map(async (symbol) => {
+                    try {
+                        const priceData = await fetchStockPriceWithPreviousClose(symbol);
+                        return { symbol, ...priceData };
+                    } catch (error) {
+                        console.warn(`Failed to fetch price for ${symbol}:`, error.message);
+                        return { symbol, price: null, previousClose: null };
+                    }
+                });
+                
+                const results = await Promise.all(pricePromises);
+                
+                // Update portfolio data with fetched prices
+                let hasUpdates = false;
+                results.forEach(({ symbol, price, previousClose }) => {
+                    if (price !== null) {
+                        // Update all entries with this symbol
+                        portfolioData.forEach(entry => {
+                            if (entry.symbol && entry.symbol.toUpperCase() === symbol) {
+                                entry.currentPrice = price;
+                                if (previousClose !== null) {
+                                    entry.previousClose = previousClose;
+                                }
+                                hasUpdates = true;
+                            }
+                        });
+                    }
+                });
+                
+                if (hasUpdates) {
+                    // Recalculate values and totals
+                    portfolioData.forEach(entry => {
+                        if (entry.currentPrice && entry.shares) {
+                            entry.value = entry.currentPrice * entry.shares;
+                            entry.totalGainLoss = entry.value - entry.paid;
+                            
+                            // Calculate today's change based on current price vs previous day's closing price
+                            if (entry.previousClose) {
+                                const currentValue = entry.currentPrice * entry.shares;
+                                const previousValue = entry.previousClose * entry.shares;
+                                entry.todayChange = currentValue - previousValue;
+                            }
+                        } else if (entry.symbol === 'CASH') {
+                            entry.todayChange = 0; // Cash doesn't change
+                        }
+                    });
+                    
+                    // Save updated data
+                    localStorage.setItem('portfolioData', JSON.stringify(portfolioData));
+                    
+                    // Refresh display
+                    const stats = calculatePortfolioStats(portfolioData);
+                    updatePortfolioSummary(stats);
+                    displayTickerTable(portfolioData);
+                    updateCharacterImage(portfolioData);
+                    
+                    // Update timestamp
+                    updateLastRefreshed();
+                }
+                
+            } catch (error) {
+                console.warn('Auto price fetch failed:', error);
+                // Fail silently - don't show any user messages
+            }
+        }
+        
+        // Fetch stock price with previous close using multiple methods with fallbacks
+        async function fetchStockPriceWithPreviousClose(symbol) {
+            const methods = [
+                () => fetchStockPriceWithPreviousCloseViaProxy(symbol),
+                () => fetchStockPriceWithPreviousCloseViaIEX(symbol),
+                () => fetchStockPriceWithPreviousCloseViaAlphaVantage(symbol),
+                () => fetchStockPriceWithPreviousCloseViaFinnhub(symbol)
+            ];
+            
+            for (let i = 0; i < methods.length; i++) {
+                try {
+                    const result = await methods[i]();
+                    if (result && result.price && result.price > 0) {
+                        return result;
+                    }
+                } catch (error) {
+                    if (i === methods.length - 1) {
+                        throw error; // Re-throw if all methods failed
+                    }
+                }
+            }
+        }
+
+        // Fetch stock price using multiple methods with fallbacks
+        async function fetchStockPrice(symbol) {
+            const methods = [
+                () => fetchStockPriceViaProxy(symbol),
+                () => fetchStockPriceViaIEX(symbol),
+                () => fetchStockPriceViaAlphaVantage(symbol),
+                () => fetchStockPriceViaFinnhub(symbol)
+            ];
+            
+            for (let i = 0; i < methods.length; i++) {
+                try {
+                    const price = await methods[i]();
+                    if (price && price > 0) {
+                        return price;
+                    }
+                } catch (error) {
+                    if (i === methods.length - 1) {
+                        throw error; // Re-throw if all methods failed
+                    }
+                }
+            }
+        }
+        
+        // Method 1: Using CORS proxy for Yahoo Finance with previous close
+        async function fetchStockPriceWithPreviousCloseViaProxy(symbol) {
+            try {
+                const proxyUrl = 'https://api.allorigins.win/raw?url=';
+                const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}`;
+                const url = proxyUrl + encodeURIComponent(yahooUrl);
+                
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (!data.chart || !data.chart.result || data.chart.result.length === 0) {
+                    throw new Error('No data returned from API');
+                }
+                
+                const result = data.chart.result[0];
+                const meta = result.meta;
+                
+                if (!meta || meta.regularMarketPrice === undefined) {
+                    throw new Error('Price data not available');
+                }
+                
+                return {
+                    price: meta.regularMarketPrice,
+                    previousClose: meta.previousClose || meta.regularMarketPrice
+                };
+                
+            } catch (error) {
+                throw error;
+            }
+        }
+
+        // Method 1: Using CORS proxy for Yahoo Finance
+        async function fetchStockPriceViaProxy(symbol) {
+            try {
+                const proxyUrl = 'https://api.allorigins.win/raw?url=';
+                const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}`;
+                const url = proxyUrl + encodeURIComponent(yahooUrl);
+                
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (!data.chart || !data.chart.result || data.chart.result.length === 0) {
+                    throw new Error('No data returned from API');
+                }
+                
+                const result = data.chart.result[0];
+                const meta = result.meta;
+                
+                if (!meta || meta.regularMarketPrice === undefined) {
+                    throw new Error('Price data not available');
+                }
+                
+                return meta.regularMarketPrice;
+                
+            } catch (error) {
+                throw error;
+            }
+        }
+        
+        // Method 2: Using IEX Cloud (free tier) with previous close
+        async function fetchStockPriceWithPreviousCloseViaIEX(symbol) {
+            try {
+                const apiKey = 'pk_test_1234567890abcdef'; // Free test key
+                const url = `https://cloud.iexapis.com/stable/stock/${symbol}/quote?token=${apiKey}`;
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.latestPrice && data.latestPrice > 0) {
+                    return {
+                        price: data.latestPrice,
+                        previousClose: data.previousClose || data.latestPrice
+                    };
+                }
+                
+                throw new Error('Price data not available');
+                
+            } catch (error) {
+                throw error;
+            }
+        }
+
+        // Method 2: Using IEX Cloud (free tier)
+        async function fetchStockPriceViaIEX(symbol) {
+            try {
+                const apiKey = 'pk_test_1234567890abcdef'; // Free test key
+                const url = `https://cloud.iexapis.com/stable/stock/${symbol}/quote?token=${apiKey}`;
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.latestPrice && data.latestPrice > 0) {
+                    return data.latestPrice;
+                }
+                
+                throw new Error('Price data not available');
+                
+            } catch (error) {
+                throw error;
+            }
+        }
+        
+        // Method 3: Using Alpha Vantage (free tier) with previous close
+        async function fetchStockPriceWithPreviousCloseViaAlphaVantage(symbol) {
+            try {
+                const apiKey = 'demo'; // Using demo key for free access
+                const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${apiKey}`;
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data['Global Quote'] && data['Global Quote']['05. price']) {
+                    return {
+                        price: parseFloat(data['Global Quote']['05. price']),
+                        previousClose: parseFloat(data['Global Quote']['08. previous close']) || parseFloat(data['Global Quote']['05. price'])
+                    };
+                }
+                
+                throw new Error('Price data not available');
+                
+            } catch (error) {
+                throw error;
+            }
+        }
+
+        // Method 3: Using Alpha Vantage (free tier)
+        async function fetchStockPriceViaAlphaVantage(symbol) {
+            try {
+                const apiKey = 'demo'; // Using demo key for free access
+                const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${apiKey}`;
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data['Global Quote'] && data['Global Quote']['05. price']) {
+                    return parseFloat(data['Global Quote']['05. price']);
+                }
+                
+                throw new Error('Price data not available');
+                
+            } catch (error) {
+                throw error;
+            }
+        }
+        
+        // Method 4: Using Finnhub (free tier) with previous close
+        async function fetchStockPriceWithPreviousCloseViaFinnhub(symbol) {
+            try {
+                const apiKey = 'demo'; // Using demo key for free access
+                const url = `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`;
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.c && data.c > 0) {
+                    return {
+                        price: data.c, // Current price
+                        previousClose: data.pc || data.c // Previous close price
+                    };
+                }
+                
+                throw new Error('Price data not available');
+                
+            } catch (error) {
+                throw error;
+            }
+        }
+
+        // Method 4: Using Finnhub (free tier)
+        async function fetchStockPriceViaFinnhub(symbol) {
+            try {
+                const apiKey = 'demo'; // Using demo key for free access
+                const url = `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`;
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.c && data.c > 0) {
+                    return data.c; // Current price
+                }
+                
+                throw new Error('Price data not available');
+                
+            } catch (error) {
+                throw error;
+            }
+        }
+
+        // Auto-refresh functionality
+        let autoRefreshInterval = null;
+        let refreshButton = null;
+
+        // Update last refreshed timestamp
+        function updateLastRefreshed() {
+            const now = new Date();
+            const timestamp = now.toLocaleString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true
+            });
+            document.getElementById('lastRefreshed').textContent = timestamp;
+        }
+
+        // Manual refresh function
+        async function refreshPrices() {
+            const button = document.querySelector('.refresh-btn');
+            const originalText = button.textContent;
+            
+            // Show loading state
+            button.textContent = '⏳ Refreshing...';
+            button.disabled = true;
+            
+            try {
+                const portfolioData = loadPortfolioData();
+                await autoFetchCurrentPrices(portfolioData);
+                
+                // Update display
+                const stats = calculatePortfolioStats(portfolioData);
+                updatePortfolioSummary(stats);
+                displayTickerTable(portfolioData);
+                updateCharacterImage(portfolioData);
+                
+                // Update timestamp
+                updateLastRefreshed();
+                
+                console.log('Prices refreshed successfully');
+            } catch (error) {
+                console.error('Error refreshing prices:', error);
+            } finally {
+                // Restore button state
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+
+        // Set auto-refresh interval
+        function setAutoRefresh() {
+            const select = document.getElementById('autoRefreshSelect');
+            const interval = parseInt(select.value);
+            
+            // Clear existing interval
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+            
+            // Set new interval if not 0
+            if (interval > 0) {
+                const intervalMs = interval * 60 * 1000; // Convert minutes to milliseconds
+                autoRefreshInterval = setInterval(async () => {
+                    console.log(`Auto-refreshing prices (${interval} minute interval)`);
+                    try {
+                        const portfolioData = loadPortfolioData();
+                        await autoFetchCurrentPrices(portfolioData);
+                        
+                        // Update display
+                        const stats = calculatePortfolioStats(portfolioData);
+                        updatePortfolioSummary(stats);
+                        displayTickerTable(portfolioData);
+                        updateCharacterImage(portfolioData);
+                        
+                        // Update timestamp
+                        updateLastRefreshed();
+                    } catch (error) {
+                        console.error('Auto-refresh failed:', error);
+                    }
+                }, intervalMs);
+                
+                console.log(`Auto-refresh set to ${interval} minute(s)`);
+            } else {
+                console.log('Auto-refresh disabled');
+            }
+        }
+
+        // Add some interactive effects
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize lightning toggle state
+            initializeLightningToggle();
+            
+            // Load and display portfolio data
+            const portfolioData = loadPortfolioData();
+            const stats = calculatePortfolioStats(portfolioData);
+            updatePortfolioSummary(stats);
+            displayTickerTable(portfolioData);
+            
+            // Update character image based on portfolio data
+            updateCharacterImage(portfolioData);
+            
+            // Automatically fetch current prices on page load
+            autoFetchCurrentPrices(portfolioData);
+            
+            // Start auto-refresh with default 5-minute interval
+            setAutoRefresh();
+            
+            const progressBars = document.querySelectorAll('.progress-bar');
+            
+            // Animate progress bars on load
+            setTimeout(() => {
+                progressBars.forEach(bar => {
+                    const width = bar.style.width;
+                    bar.style.width = '0%';
+                    setTimeout(() => {
+                        bar.style.width = width;
+                    }, 100);
+                });
+            }, 500);
+
+            // Add hover effects
+            const statBars = document.querySelectorAll('.stat-bar');
+            statBars.forEach(bar => {
+                bar.addEventListener('mouseenter', function() {
+                    this.style.transform = 'scale(1.02)';
+                    this.style.transition = 'transform 0.3s ease';
+                });
+                
+                bar.addEventListener('mouseleave', function() {
+                    this.style.transform = 'scale(1)';
+                });
+            });
+
+            // Add magical sparkle effect to character image on hover
+            const characterImage = document.getElementById('characterImage');
+            characterImage.addEventListener('mouseenter', function() {
+                this.style.boxShadow = '0 0 30px rgba(100, 100, 100, 0.6), 0 0 60px rgba(100, 100, 100, 0.3)';
+            });
+            
+            characterImage.addEventListener('mouseleave', function() {
+                this.style.boxShadow = '0 0 20px rgba(100, 100, 100, 0.3), 0 10px 30px rgba(0, 0, 0, 0.6)';
+            });
+
+            // Add hover effects to holding items
+            const holdingItems = document.querySelectorAll('.holding-item');
+            holdingItems.forEach(item => {
+                item.addEventListener('mouseenter', function() {
+                    this.style.transform = 'scale(1.02)';
+                    this.style.transition = 'transform 0.3s ease';
+                });
+                
+                item.addEventListener('mouseleave', function() {
+                    this.style.transform = 'scale(1)';
+                });
+            });
+        });
+    </script>
+</body>
+</html>

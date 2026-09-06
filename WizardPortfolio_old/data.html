@@ -1,0 +1,2121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio Data Management - D&D Style</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Crimson Text', serif;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(20, 20, 20, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(15, 15, 15, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 40% 80%, rgba(10, 10, 10, 0.3) 0%, transparent 50%),
+                linear-gradient(135deg, #000000 0%, #050505 25%, #0a0a0a 50%, #0f0f0f 75%, #000000 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+            padding: 8px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 25% 25%, rgba(100, 100, 100, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 75% 75%, rgba(80, 80, 80, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* Glowing runes background styles */
+        .runes-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+            overflow: hidden;
+        }
+
+        .rune {
+            position: absolute;
+            font-family: 'Cinzel', serif;
+            font-size: 2rem;
+            font-weight: bold;
+            opacity: 0.3;
+            animation: runeGlow 4s ease-in-out infinite;
+            text-shadow: 0 0 10px currentColor;
+        }
+
+        .red-rune {
+            color: #ff4444;
+            text-shadow: 0 0 15px #ff4444, 0 0 30px #ff4444;
+        }
+
+        .green-rune {
+            color: #44ff44;
+            text-shadow: 0 0 15px #44ff44, 0 0 30px #44ff44;
+        }
+
+        .gold-rune {
+            color: #ffd700;
+            text-shadow: 0 0 15px #ffd700, 0 0 30px #ffd700;
+        }
+
+        @keyframes runeGlow {
+            0%, 100% { 
+                opacity: 0.2; 
+                transform: scale(1) rotate(0deg);
+            }
+            50% { 
+                opacity: 0.6; 
+                transform: scale(1.1) rotate(5deg);
+            }
+        }
+
+        /* Rune symbols for magical effect */
+        .rune-symbols {
+            font-size: 1.5rem;
+        }
+
+        /* Lightning bolt styles */
+        .lightning-bolt {
+            position: absolute;
+            pointer-events: none;
+            z-index: 1;
+            opacity: 0;
+            animation: lightningFlash 0.8s ease-in-out;
+        }
+
+        .lightning-segment {
+            position: absolute;
+            background: currentColor;
+            border-radius: 1px;
+            box-shadow: 0 0 5px currentColor, 0 0 10px currentColor, 0 0 15px currentColor;
+        }
+
+        .red-lightning {
+            color: #ff4444;
+        }
+
+        .green-lightning {
+            color: #44ff44;
+        }
+
+        .gold-lightning {
+            color: #ffd700;
+        }
+
+        @keyframes lightningFlash {
+            0% { opacity: 0; }
+            5% { opacity: 1; }
+            15% { opacity: 0.7; }
+            25% { opacity: 1; }
+            35% { opacity: 0.8; }
+            45% { opacity: 1; }
+            55% { opacity: 0.6; }
+            65% { opacity: 1; }
+            75% { opacity: 0.9; }
+            85% { opacity: 1; }
+            95% { opacity: 0.3; }
+            100% { opacity: 0; }
+        }
+
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .title {
+            font-family: 'Cinzel', serif;
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            text-shadow: 
+                2px 2px 0px #333,
+                4px 4px 8px rgba(0, 0, 0, 0.8);
+            background: linear-gradient(45deg, #e0e0e0, #f0f0f0, #d0d0d0, #c0c0c0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .nav-link {
+            color: #ccc;
+            text-decoration: none;
+            font-family: 'Cinzel', serif;
+            font-size: 1.1rem;
+            margin: 0 10px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            background: rgba(15, 15, 15, 0.8);
+            border: 2px solid rgba(20, 20, 20, 0.5);
+            transition: all 0.3s ease;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        .nav-link:hover {
+            background: rgba(20, 20, 20, 0.9);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(100, 100, 100, 0.3);
+        }
+
+        .data-container {
+            background: 
+                linear-gradient(145deg, rgba(15, 15, 15, 0.6) 0%, rgba(20, 20, 20, 0.5) 50%, rgba(10, 10, 10, 0.6) 100%);
+            backdrop-filter: blur(5px);
+            border-radius: 15px;
+            padding: 8px;
+            box-shadow: 
+                0 0 30px rgba(100, 100, 100, 0.2),
+                inset 0 0 20px rgba(0, 0, 0, 0.5),
+                0 8px 32px rgba(0, 0, 0, 0.8);
+            border: 3px solid rgba(20, 20, 20, 0.5);
+            position: relative;
+            opacity: 0.85;
+        }
+
+        .data-container::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: rgba(20, 20, 20, 0.5);
+            border-radius: 17px;
+            z-index: -1;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: 2px solid;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+            font-family: 'Cinzel', serif;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #4a90e2 0%, #7bb3f0 100%);
+            border-color: #4a90e2;
+            color: white;
+        }
+
+        .btn-success {
+            background: linear-gradient(45deg, #27ae60 0%, #2ecc71 100%);
+            border-color: #27ae60;
+            color: white;
+        }
+
+        .btn-danger {
+            background: linear-gradient(45deg, #e74c3c 0%, #c0392b 100%);
+            border-color: #e74c3c;
+            color: white;
+        }
+
+        .btn-warning {
+            background: linear-gradient(45deg, #f39c12 0%, #e67e22 100%);
+            border-color: #f39c12;
+            color: white;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .btn:disabled:hover {
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .table-container {
+            overflow-x: auto;
+            border-radius: 10px;
+            background: 
+                linear-gradient(145deg, rgba(30, 30, 30, 0.8), rgba(40, 40, 40, 0.6));
+            border: 2px solid rgba(20, 20, 20, 0.5);
+            box-shadow: 
+                inset 0 2px 4px rgba(0, 0, 0, 0.5),
+                0 4px 8px rgba(0, 0, 0, 0.4);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: rgba(15, 15, 15, 0.5);
+        }
+
+        th, td {
+            padding: 12px 8px;
+            text-align: left;
+            border-bottom: 1px solid rgba(100, 100, 100, 0.3);
+            font-family: 'Crimson Text', serif;
+            color: #e0e0e0;
+        }
+
+        th {
+            background: 
+                linear-gradient(145deg, rgba(30, 30, 30, 0.9), rgba(40, 40, 40, 0.7));
+            font-weight: bold;
+            font-family: 'Cinzel', serif;
+            color: #ccc;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+            position: sticky;
+            top: 0;
+            border-bottom: 2px solid rgba(20, 20, 20, 0.5);
+        }
+
+        tr:hover {
+            background: rgba(100, 100, 100, 0.1);
+        }
+
+        /* Drag and Drop Styles */
+        .draggable-row {
+            cursor: move;
+            transition: all 0.3s ease;
+        }
+
+        .draggable-row:hover {
+            background: rgba(100, 100, 100, 0.2) !important;
+        }
+
+        .dragging {
+            opacity: 0.5;
+            transform: rotate(2deg);
+            background: rgba(100, 100, 100, 0.3) !important;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .drag-over {
+            border-top: 3px solid #4a90e2;
+            background: rgba(74, 144, 226, 0.1) !important;
+        }
+
+        .drag-handle {
+            cursor: grab;
+            color: rgba(20, 20, 20, 0.5);
+            font-size: 1.2rem;
+            text-align: center;
+            padding: 8px;
+            user-select: none;
+            transition: color 0.3s ease;
+        }
+
+        .drag-handle:hover {
+            color: #4a90e2;
+        }
+
+        .drag-handle:active {
+            cursor: grabbing;
+        }
+
+        .total-row {
+            background: 
+                linear-gradient(145deg, rgba(100, 100, 100, 0.3), rgba(80, 80, 80, 0.2)) !important;
+            font-weight: bold;
+            font-family: 'Cinzel', serif;
+            color: #ccc;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        .positive {
+            color: #27ae60;
+            text-shadow: 0 0 5px rgba(39, 174, 96, 0.5);
+        }
+
+        .negative {
+            color: #e74c3c;
+            text-shadow: 0 0 5px rgba(231, 76, 60, 0.5);
+        }
+
+        .neutral {
+            color: #e0e0e0;
+        }
+
+        /* Lightning toggle button styles */
+        .lightning-toggle-btn {
+            color: #ccc;
+            text-decoration: none;
+            font-family: 'Cinzel', serif;
+            font-size: 1.1rem;
+            margin: 0 10px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            background: rgba(15, 15, 15, 0.8);
+            border: 2px solid rgba(20, 20, 20, 0.5);
+            transition: all 0.3s ease;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .lightning-toggle-btn:hover {
+            background: rgba(20, 20, 20, 0.9);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(100, 100, 100, 0.3);
+        }
+
+        .lightning-toggle-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .lightning-toggle-btn:hover::before {
+            left: 100%;
+        }
+
+        .lightning-toggle-btn.active {
+            background: linear-gradient(45deg, #ffd700 0%, #ffed4e 100%);
+            border-color: #ffd700;
+            color: #000;
+            text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.5);
+        }
+
+        .lightning-toggle-btn.active:hover {
+            background: linear-gradient(45deg, #ffed4e 0%, #ffd700 100%);
+            box-shadow: 0 5px 20px rgba(255, 215, 0, 0.7);
+        }
+
+        input, select {
+            background: rgba(30, 30, 30, 0.9);
+            border: 2px solid rgba(20, 20, 20, 0.5);
+            border-radius: 8px;
+            padding: 10px;
+            color: #e0e0e0;
+            width: 100%;
+            font-family: 'Crimson Text', serif;
+            font-size: 1rem;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            box-shadow: 0 0 10px rgba(100, 100, 100, 0.5);
+            border-color: #aaa;
+        }
+
+        input::placeholder {
+            color: rgba(224, 224, 224, 0.6);
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            background: 
+                linear-gradient(145deg, rgba(30, 30, 30, 0.95) 0%, rgba(40, 40, 40, 0.9) 50%, rgba(20, 20, 20, 0.95) 100%),
+                url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="parchment" patternUnits="userSpaceOnUse" width="4" height="4"><rect width="4" height="4" fill="%23666" opacity="0.1"/><circle cx="2" cy="2" r="0.5" fill="%23444" opacity="0.2"/></pattern></defs><rect width="100" height="100" fill="url(%23parchment)"/></svg>');
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 
+                0 0 30px rgba(100, 100, 100, 0.2),
+                inset 0 0 20px rgba(0, 0, 0, 0.5),
+                0 20px 60px rgba(0, 0, 0, 0.8);
+            border: 3px solid rgba(20, 20, 20, 0.5);
+            position: relative;
+        }
+
+        .modal-content::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: rgba(20, 20, 20, 0.5);
+            border-radius: 17px;
+            z-index: -1;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h2 {
+            font-family: 'Cinzel', serif;
+            color: #ccc;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        .close {
+            color: #ccc;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        .close:hover {
+            color: #fff;
+            transform: scale(1.1);
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            font-family: 'Cinzel', serif;
+            color: #ccc;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        .actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .actions .btn {
+            flex: 1;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: column;
+            }
+            
+            .form-row {
+                flex-direction: column;
+            }
+            
+            .actions {
+                flex-direction: column;
+            }
+            
+            table {
+                font-size: 0.9rem;
+            }
+            
+            th, td {
+                padding: 8px 4px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">Portfolio Data Management</h1>
+            <div>
+                <a href="index.html" class="nav-link">← Back to Home</a>
+                <a href="risk.html" class="nav-link">🛡️ Risk</a>
+                <a href="buy-sell.html" class="nav-link">💰 Buy/Sell</a>
+                <a href="#" class="nav-link" onclick="exportData()">Export Data</a>
+                <a href="#" class="nav-link" onclick="importData()">Import Data</a>
+                <button class="lightning-toggle-btn" id="lightningToggleBtn" onclick="toggleLightning()">⚡</button>
+            </div>
+        </div>
+
+        <div class="data-container">
+            <div class="controls">
+                <div style="display: flex; gap: 15px;">
+                    <button class="btn btn-primary" onclick="openAddModal()">Add New Entry</button>
+                    <!-- <button class="btn btn-success" onclick="calculateTotals()">Recalculate Totals</button> -->
+                    <button class="btn btn-warning" onclick="fetchCurrentPrices()">📈 Refresh</button>
+                    <!-- <button class="btn btn-success" onclick="forceUpdatePreviousClose()">🔄 Update Previous Close</button> -->
+                    <!-- <button class="btn btn-success" onclick="testRunes()">🧙 Test Runes</button> -->
+                    <!-- <button class="btn btn-primary" onclick="openManualPriceModal()">✏️ Manual Price Entry</button> -->
+                    <!-- <button class="btn btn-warning" onclick="clearAllData()">Clear All Data</button> -->
+                    <!-- <button class="btn btn-danger" onclick="loadSampleData()">Load Sample Data</button> -->
+                </div>
+                <div style="display: flex; gap: 15px;">
+                    <a href="meltUp.html" class="btn btn-primary">MeltUp</a>
+                    <a href="allocation.html" class="btn btn-primary">Allocation</a>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table id="portfolioTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;">⋮⋮</th>
+                            <th>Symbol</th>
+                            <th>Buy Price</th>
+                            <th>Shares</th>
+                            <th>Paid</th>
+                            <th>Current Price</th>
+                            <th>Previous Close</th>
+                            <th>Current Value</th>
+                            <th>Previous Value</th>
+                            <th>Today Change</th>
+                            <th>Total Gain/Loss</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="portfolioTableBody">
+                        <!-- Data will be populated here -->
+                    </tbody>
+                    <tfoot>
+                        <tr class="total-row">
+                            <td></td>
+                            <td><strong>TOTAL</strong></td>
+                            <td></td>
+                            <td></td>
+                            <td id="totalPaid">$0.00</td>
+                            <td></td>
+                            <td></td>
+                            <td id="totalValue">$0.00</td>
+                            <td id="totalPreviousValue">$0.00</td>
+                            <td id="totalTodayChange">$0.00</td>
+                            <td id="totalGainLoss">$0.00</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Modal -->
+    <div id="entryModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Add New Entry</h2>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <form id="entryForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="symbol">Symbol:</label>
+                        <input type="text" id="symbol" name="symbol" placeholder="e.g., TSLA" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="buyPrice">Buy Price:</label>
+                        <input type="number" id="buyPrice" name="buyPrice" step="0.01" placeholder="0.00">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="shares">Shares:</label>
+                        <input type="number" id="shares" name="shares" step="0.000001" placeholder="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="paid">Paid:</label>
+                        <input type="number" id="paid" name="paid" step="0.01" placeholder="0.00">
+                        <!-- <label for="currentPrice">Current Price:</label>
+                        <input type="number" id="currentPrice" name="currentPrice" step="0.01" placeholder="0.00"> -->
+                    </div>
+                </div>
+                <!-- <div class="form-row">
+                    <div class="form-group">
+                        <label for="previousClose">Previous Close Price:</label>
+                        <input type="number" id="previousClose" name="previousClose" step="0.01" placeholder="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label for="paid">Paid:</label>
+                        <input type="number" id="paid" name="paid" step="0.01" placeholder="0.00">
+                    </div>
+                </div> -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <!-- <label for="todayChange">Today Change (Optional - Auto-calculated):</label>
+                        <input type="number" id="todayChange" name="todayChange" step="0.01" placeholder="Auto-calculated from current price"> -->
+                    </div>
+                </div>
+                <div class="actions">
+                    <button type="button" class="btn btn-primary" onclick="saveEntry()">Save</button>
+                    <button type="button" class="btn btn-danger" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Hidden file input for import -->
+    <input type="file" id="fileInput" accept=".json" style="display: none;" onchange="handleFileImport(event)">
+
+    <!-- Manual Price Entry Modal -->
+    <div id="manualPriceModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Manual Price Entry</h2>
+                <span class="close" onclick="closeManualPriceModal()">&times;</span>
+            </div>
+            <div id="manualPriceContent">
+                <!-- Content will be populated dynamically -->
+            </div>
+            <div class="actions">
+                <button type="button" class="btn btn-success" onclick="saveManualPrices()">Save All Prices</button>
+                <button type="button" class="btn btn-danger" onclick="closeManualPriceModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Glowing runes background -->
+    <div class="runes-background" id="runesBackground"></div>
+
+    <script>
+        let portfolioData = [];
+        let editingIndex = -1;
+
+        // Rune symbols for magical effect
+        const runeSymbols = ['ᚠ', 'ᚢ', 'ᚦ', 'ᚨ', 'ᚱ', 'ᚲ', 'ᚷ', 'ᚹ', 'ᚺ', 'ᚾ', 'ᛁ', 'ᛃ', 'ᛇ', 'ᛈ', 'ᛉ', 'ᛊ', 'ᛏ', 'ᛒ', 'ᛖ', 'ᛗ', 'ᛚ', 'ᛜ', 'ᛞ', 'ᛟ'];
+
+        // Create glowing runes in the background
+        function createRunes(runeType, count = 15) {
+            const runesBackground = document.getElementById('runesBackground');
+            
+            // Clear existing runes
+            runesBackground.innerHTML = '';
+            
+            for (let i = 0; i < count; i++) {
+                const rune = document.createElement('div');
+                rune.className = `rune ${runeType}-rune rune-symbols`;
+                
+                // Random rune symbol
+                const symbol = runeSymbols[Math.floor(Math.random() * runeSymbols.length)];
+                rune.textContent = symbol;
+                
+                // Random position
+                const x = Math.random() * 100;
+                const y = Math.random() * 100;
+                rune.style.left = x + '%';
+                rune.style.top = y + '%';
+                
+                // Random animation delay
+                rune.style.animationDelay = Math.random() * 4 + 's';
+                
+                // Random size variation
+                const size = 1.5 + Math.random() * 1;
+                rune.style.fontSize = size + 'rem';
+                
+                runesBackground.appendChild(rune);
+            }
+        }
+
+        // Update runes background based on Today's Change percentage intensity
+        function updateRunesBackground() {
+            // Load portfolio data to check Today's Change percentage
+            const portfolioData = loadPortfolioData();
+            if (!portfolioData || portfolioData.length === 0) {
+                // Gold runes if no data
+                createRunes('gold', 50);
+                const lightningEnabled = localStorage.getItem('lightningEnabled') === 'true';
+                if (lightningEnabled) {
+                    startLightningBolts('gold', 1);
+                }
+                return;
+            }
+
+            // Calculate portfolio stats
+            const stats = calculatePortfolioStats(portfolioData);
+            const todayChangePercent = Math.abs(stats.todayChange); // Today's Change percentage
+            
+            // Calculate intensity multiplier based on Today's Change percentage magnitude
+            let intensityMultiplier = 1;
+            if (todayChangePercent > 5) {
+                intensityMultiplier = 3; // Very high volatility (>5% change)
+            } else if (todayChangePercent > 3) {
+                intensityMultiplier = 2.5; // High volatility (>3% change)
+            } else if (todayChangePercent > 1) {
+                intensityMultiplier = 2; // Medium volatility (>1% change)
+            } else if (todayChangePercent > 0.5) {
+                intensityMultiplier = 1.5; // Low volatility (>0.5% change)
+            }
+            
+            // Base rune count
+            const baseRuneCount = 50;
+            const runeCount = Math.floor(baseRuneCount * intensityMultiplier);
+            
+            // Check if lightning is enabled
+            const lightningEnabled = localStorage.getItem('lightningEnabled') === 'true';
+            
+            if (stats.todayChange > 1) {
+                // Green runes for positive Today's Change - more intense for higher percentages
+                createRunes('green', runeCount);
+                if (lightningEnabled) {
+                    startLightningBolts('green', intensityMultiplier);
+                }
+            } else if (stats.todayChange < -1) {
+                // Red runes for negative Today's Change - more intense for higher absolute percentages
+                createRunes('red', runeCount);
+                if (lightningEnabled) {
+                    startLightningBolts('red', intensityMultiplier);
+                }
+            } else {
+                // Gold runes for stable performance
+                createRunes('gold', runeCount);
+                if (lightningEnabled) {
+                    startLightningBolts('gold', intensityMultiplier);
+                }
+            }
+        }
+
+        // Create fractal lightning bolt starting from edge with intensity
+        function createFractalLightning(lightningType, intensityMultiplier = 1) {
+            const runesBackground = document.getElementById('runesBackground');
+            const lightning = document.createElement('div');
+            lightning.className = `lightning-bolt ${lightningType}-lightning`;
+            
+            // Get viewport dimensions
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            
+            // Create multiple lightning bolts from different edges based on intensity
+            const baseBolts = 2;
+            const maxBolts = Math.floor(baseBolts * intensityMultiplier) + Math.floor(Math.random() * 3);
+            const numBolts = Math.min(maxBolts, 8); // Cap at 8 bolts maximum
+            
+            for (let i = 0; i < numBolts; i++) {
+                // Randomly choose which edge to start from
+                const edge = Math.floor(Math.random() * 4); // 0=top, 1=right, 2=bottom, 3=left
+                let startX, startY;
+                
+                switch (edge) {
+                    case 0: // Top edge
+                        startX = Math.random() * viewportWidth;
+                        startY = 0;
+                        break;
+                    case 1: // Right edge
+                        startX = viewportWidth;
+                        startY = Math.random() * viewportHeight;
+                        break;
+                    case 2: // Bottom edge
+                        startX = Math.random() * viewportWidth;
+                        startY = viewportHeight;
+                        break;
+                    case 3: // Left edge
+                        startX = 0;
+                        startY = Math.random() * viewportHeight;
+                        break;
+                }
+                
+                // Multiple target points for more complex patterns
+                const targets = [
+                    { x: viewportWidth / 2, y: viewportHeight / 2 }, // Center
+                    { x: viewportWidth * 0.3, y: viewportHeight * 0.3 }, // Top-left area
+                    { x: viewportWidth * 0.7, y: viewportHeight * 0.3 }, // Top-right area
+                    { x: viewportWidth * 0.3, y: viewportHeight * 0.7 }, // Bottom-left area
+                    { x: viewportWidth * 0.7, y: viewportHeight * 0.7 }  // Bottom-right area
+                ];
+                
+                const target = targets[Math.floor(Math.random() * targets.length)];
+                
+                // Create fractal lightning tree with increased complexity based on intensity
+                const maxDepth = Math.min(8 + Math.floor(intensityMultiplier * 2), 12); // Deeper fractals for higher intensity
+                createLightningBranch(lightning, startX, startY, target.x, target.y, lightningType, 0, maxDepth);
+            }
+            
+            runesBackground.appendChild(lightning);
+            
+            // Remove after animation completes
+            setTimeout(() => {
+                if (lightning.parentNode) {
+                    lightning.parentNode.removeChild(lightning);
+                }
+            }, 1200);
+        }
+
+        // Create a lightning branch (recursive fractal)
+        function createLightningBranch(container, startX, startY, targetX, targetY, lightningType, depth, maxDepth) {
+            if (depth >= maxDepth) return;
+            
+            // Calculate distance and direction to target
+            const dx = targetX - startX;
+            const dy = targetY - startY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // If we're close enough to target, stop branching
+            if (distance < 30) return;
+            
+            // More aggressive randomness for deeper fractals
+            const angle = Math.atan2(dy, dx);
+            const randomAngle = angle + (Math.random() - 0.5) * Math.PI / 2; // ±45 degrees
+            const segmentLength = Math.min(distance * (0.2 + Math.random() * 0.3), 80 + Math.random() * 120);
+            
+            const endX = startX + Math.cos(randomAngle) * segmentLength;
+            const endY = startY + Math.sin(randomAngle) * segmentLength;
+            
+            // Create lightning segment with varied thickness
+            const segment = document.createElement('div');
+            segment.className = 'lightning-segment';
+            
+            // Calculate segment properties
+            const actualSegmentLength = Math.sqrt((endX - startX) ** 2 + (endY - startY) ** 2);
+            const segmentAngle = Math.atan2(endY - startY, endX - startX) * 180 / Math.PI;
+            
+            // Varied thickness based on depth (thicker at base, thinner at tips)
+            const thickness = Math.max(1, 6 - depth * 0.8 + Math.random() * 2);
+            
+            // Position and style the segment
+            segment.style.left = startX + 'px';
+            segment.style.top = startY + 'px';
+            segment.style.width = actualSegmentLength + 'px';
+            segment.style.height = thickness + 'px';
+            segment.style.transformOrigin = '0 50%';
+            segment.style.transform = `rotate(${segmentAngle}deg)`;
+            
+            // Add slight opacity variation for more organic look
+            segment.style.opacity = 0.8 + Math.random() * 0.2;
+            
+            container.appendChild(segment);
+            
+            // Create multiple branches for more complex fractals
+            if (depth < maxDepth - 1) {
+                // Main branch continues toward target (higher probability)
+                if (Math.random() < 0.8) {
+                    createLightningBranch(container, endX, endY, targetX, targetY, lightningType, depth + 1, maxDepth);
+                }
+                
+                // Multiple side branches with different probabilities
+                const numSideBranches = Math.floor(Math.random() * 4); // 0-3 side branches
+                
+                for (let i = 0; i < numSideBranches; i++) {
+                    if (Math.random() < 0.6) { // 60% chance for each potential branch
+                        const sideAngle = randomAngle + (Math.random() - 0.5) * Math.PI * (0.5 + Math.random() * 0.5);
+                        const sideLength = segmentLength * (0.2 + Math.random() * 0.6);
+                        const sideEndX = endX + Math.cos(sideAngle) * sideLength;
+                        const sideEndY = endY + Math.sin(sideAngle) * sideLength;
+                        
+                        // Create sub-branches with reduced max depth
+                        createLightningBranch(container, endX, endY, sideEndX, sideEndY, lightningType, depth + 1, maxDepth - 1);
+                    }
+                }
+                
+                // Occasionally create micro-branches (very short, thin branches)
+                if (Math.random() < 0.3 && depth < maxDepth - 2) {
+                    const microAngle = randomAngle + (Math.random() - 0.5) * Math.PI;
+                    const microLength = segmentLength * (0.1 + Math.random() * 0.2);
+                    const microEndX = endX + Math.cos(microAngle) * microLength;
+                    const microEndY = endY + Math.sin(microAngle) * microLength;
+                    
+                    // Create very short micro-branch
+                    const microSegment = document.createElement('div');
+                    microSegment.className = 'lightning-segment';
+                    const microSegmentLength = Math.sqrt((microEndX - endX) ** 2 + (microEndY - endY) ** 2);
+                    const microSegmentAngle = Math.atan2(microEndY - endY, microEndX - endX) * 180 / Math.PI;
+                    
+                    microSegment.style.left = endX + 'px';
+                    microSegment.style.top = endY + 'px';
+                    microSegment.style.width = microSegmentLength + 'px';
+                    microSegment.style.height = '1px';
+                    microSegment.style.transformOrigin = '0 50%';
+                    microSegment.style.transform = `rotate(${microSegmentAngle}deg)`;
+                    microSegment.style.opacity = 0.6;
+                    
+                    container.appendChild(microSegment);
+                }
+            }
+        }
+
+        // Start lightning bolt effects with intensity multiplier
+        function startLightningBolts(lightningType, intensityMultiplier = 1) {
+            // Clear any existing lightning intervals
+            if (window.lightningInterval) {
+                clearInterval(window.lightningInterval);
+            }
+            
+            // Calculate lightning frequency based on intensity
+            const baseChance = 0.2; // 20% base chance
+            const lightningChance = Math.min(baseChance * intensityMultiplier, 0.8); // Cap at 80%
+            const intervalTime = Math.max(1000 / intensityMultiplier, 200); // Faster intervals for higher intensity
+            
+            // Create fractal lightning bolts at random intervals
+            window.lightningInterval = setInterval(() => {
+                // Random chance to create lightning based on intensity
+                if (Math.random() < lightningChance) {
+                    createFractalLightning(lightningType, intensityMultiplier);
+                }
+            }, intervalTime);
+        }
+
+        // Stop lightning bolt effects
+        function stopLightningBolts() {
+            if (window.lightningInterval) {
+                clearInterval(window.lightningInterval);
+                window.lightningInterval = null;
+            }
+        }
+
+        // Lightning toggle functionality
+        function toggleLightning() {
+            const button = document.getElementById('lightningToggleBtn');
+            const isActive = button.classList.contains('active');
+            
+            if (isActive) {
+                // Turn off lightning effects
+                stopLightningBolts();
+                button.classList.remove('active');
+                button.textContent = '⚡';
+                localStorage.setItem('lightningEnabled', 'false');
+            } else {
+                // Turn on lightning effects
+                const portfolioData = loadPortfolioData();
+                const stats = calculatePortfolioStats(portfolioData);
+                const todayChangePercent = Math.abs(stats.todayChange);
+                
+                // Calculate intensity multiplier based on Today's Change percentage magnitude
+                let intensityMultiplier = 1;
+                if (todayChangePercent > 5) {
+                    intensityMultiplier = 3;
+                } else if (todayChangePercent > 3) {
+                    intensityMultiplier = 2.5;
+                } else if (todayChangePercent > 1) {
+                    intensityMultiplier = 2;
+                } else if (todayChangePercent > 0.5) {
+                    intensityMultiplier = 1.5;
+                }
+                
+                if (stats.todayChange > 1) {
+                    startLightningBolts('green', intensityMultiplier);
+                } else if (stats.todayChange < -1) {
+                    startLightningBolts('red', intensityMultiplier);
+                } else {
+                    startLightningBolts('gold', intensityMultiplier);
+                }
+                
+                button.classList.add('active');
+                button.textContent = '⚡';
+                localStorage.setItem('lightningEnabled', 'true');
+            }
+        }
+
+        // Initialize lightning toggle state
+        function initializeLightningToggle() {
+            const button = document.getElementById('lightningToggleBtn');
+            const lightningEnabled = localStorage.getItem('lightningEnabled');
+            
+            // Default to ON if no preference is set
+            if (lightningEnabled === null || lightningEnabled === 'true') {
+                button.classList.add('active');
+                button.textContent = '⚡';
+                localStorage.setItem('lightningEnabled', 'true');
+            } else {
+                button.classList.remove('active');
+                button.textContent = '⚡';
+            }
+        }
+
+        // Test function to manually trigger runes
+        function testRunes() {
+            console.log('Test runes button clicked');
+            // Test red runes
+            createRunes('red', 10);
+            setTimeout(() => {
+                // Test green runes after 3 seconds
+                createRunes('green', 10);
+            }, 3000);
+        }
+
+        // Load portfolio data from localStorage
+        function loadPortfolioData() {
+            const saved = localStorage.getItem('portfolioData');
+            if (saved) {
+                return JSON.parse(saved);
+            }
+            return [];
+        }
+
+        // Calculate portfolio statistics (simplified version)
+        function calculatePortfolioStats(portfolioData) {
+            if (!portfolioData || portfolioData.length === 0) {
+                return { todayChange: 0 };
+            }
+
+            const totalValue = portfolioData.reduce((sum, entry) => sum + (entry.value || 0), 0);
+            
+            // Calculate today's change using SUMPRODUCT(Total Allocation %, Today's Gain/Loss %)
+            let sumproductTodayChange = 0;
+            portfolioData.forEach((entry) => {
+                if (entry.currentPrice && entry.previousClose && entry.shares) {
+                    // Calculate allocation percentage
+                    const allocationPercent = totalValue > 0 ? (entry.value / totalValue) * 100 : 0;
+                    
+                    // Calculate today's gain/loss percentage: ((current price - previous close) / current price) * 100
+                    const priceChange = entry.currentPrice - entry.previousClose;
+                    const todayGainLossPercent = entry.currentPrice ? (priceChange / entry.currentPrice) * 100 : 0;
+                    
+                    // SUMPRODUCT: allocation_percent * today_gain_loss_percent
+                    sumproductTodayChange += (allocationPercent / 100) * todayGainLossPercent;
+                }
+            });
+
+            return {
+                todayChange: sumproductTodayChange
+            };
+        }
+
+        // Load data from localStorage on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize lightning toggle state
+            initializeLightningToggle();
+            
+            loadData();
+            renderTable();
+            
+            // Update runes background
+            updateRunesBackground();
+            
+            // Automatically fetch current prices on page load
+            autoFetchCurrentPrices();
+        });
+
+        // Sample data based on your example
+        const sampleData = [
+            { symbol: 'CASH', buyPrice: null, shares: null, paid: 113.74, currentPrice: null, previousClose: null, value: 113.74, todayChange: 0.00, totalGainLoss: 0.00 },
+            { symbol: 'PHYS', buyPrice: 26.68, shares: 2024, paid: 54003.66, currentPrice: 28.19, previousClose: 28.40, value: 57016.08, todayChange: -425.04, totalGainLoss: 3012.42 },
+            { symbol: 'XXRP', buyPrice: 38.68, shares: 674, paid: 26073.68, currentPrice: 37.55, previousClose: 38.12, value: 25308.70, todayChange: -384.18, totalGainLoss: -764.98 },
+            { symbol: 'CASH', buyPrice: null, shares: null, paid: 143104.06, currentPrice: null, previousClose: null, value: 143104.06, todayChange: 0.00, totalGainLoss: 0.00 },
+            { symbol: 'XXRP', buyPrice: 37.79, shares: 6704, paid: 253361.89, currentPrice: 37.55, previousClose: 38.12, value: 251735.20, todayChange: -3821.28, totalGainLoss: -1626.69 },
+            { symbol: 'PLTR', buyPrice: 159.60, shares: 755, paid: 120496.82, currentPrice: 168.30, previousClose: 170.25, value: 127067.26, todayChange: -1479.05, totalGainLoss: 6570.43 },
+            { symbol: 'TSLA', buyPrice: 329.52, shares: 611, paid: 201334.56, currentPrice: 425.67, previousClose: 420.15, value: 260085.59, todayChange: 2475.77, totalGainLoss: 58751.03 },
+            { symbol: 'PHYS', buyPrice: 27.39, shares: 6056, paid: 165891.13, currentPrice: 28.19, previousClose: 28.40, value: 170597.52, todayChange: -1271.76, totalGainLoss: 4706.39 }
+        ];
+
+        function loadData() {
+            const saved = localStorage.getItem('portfolioData');
+            if (saved) {
+                portfolioData = JSON.parse(saved);
+            }
+        }
+
+        function saveData() {
+            localStorage.setItem('portfolioData', JSON.stringify(portfolioData));
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('portfolioTableBody');
+            tbody.innerHTML = '';
+
+            portfolioData.forEach((entry, index) => {
+                const row = document.createElement('tr');
+                row.className = 'draggable-row';
+                row.draggable = true;
+                row.dataset.index = index;
+                
+                row.innerHTML = `
+                    <td class="drag-handle">⋮⋮</td>
+                    <td>${entry.symbol || ''}</td>
+                    <td>${entry.buyPrice ? '$' + entry.buyPrice.toFixed(2) : ''}</td>
+                    <td>${entry.shares ? entry.shares.toLocaleString() : ''}</td>
+                    <td>$${entry.paid.toFixed(2)}</td>
+                    <td class="${entry.currentPrice && entry.previousClose ? (entry.currentPrice >= entry.previousClose ? 'positive' : 'negative') : ''}">${entry.symbol === 'CASH' ? '$0.00' : (entry.currentPrice ? '$' + entry.currentPrice.toFixed(2) : 'Loading...')}</td>
+                    <td>${entry.previousClose ? '$' + entry.previousClose.toFixed(2) : (entry.symbol && entry.symbol !== 'CASH' ? 'Loading...' : '')}</td>
+                    <td>$${entry.value.toFixed(2)}</td>
+                    <td>$${entry.previousValue ? entry.previousValue.toFixed(2) : '0.00'}</td>
+                    <td class="${entry.todayChange >= 0 ? 'positive' : 'negative'}">$${entry.todayChange.toFixed(2)}</td>
+                    <td class="${entry.totalGainLoss >= 0 ? 'positive' : 'negative'}">$${entry.totalGainLoss.toFixed(2)}</td>
+                    <td>
+                        <button class="btn btn-primary" onclick="editEntry(${index})" style="padding: 5px 10px; font-size: 0.8rem; margin-right: 5px;">Edit</button>
+                        <button class="btn btn-danger" onclick="deleteEntry(${index})" style="padding: 5px 10px; font-size: 0.8rem;">Delete</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            // Add drag and drop event listeners
+            addDragAndDropListeners();
+            calculateTotals();
+        }
+
+        function calculateTotals() {
+            const totalPaid = portfolioData.reduce((sum, entry) => sum + (entry.paid || 0), 0);
+            const totalValue = portfolioData.reduce((sum, entry) => sum + (entry.value || 0), 0);
+            const totalPreviousValue = portfolioData.reduce((sum, entry) => sum + (entry.previousValue || 0), 0);
+            const totalTodayChange = portfolioData.reduce((sum, entry) => sum + (entry.todayChange || 0), 0);
+            const totalGainLoss = portfolioData.reduce((sum, entry) => sum + (entry.totalGainLoss || 0), 0);
+
+            document.getElementById('totalPaid').textContent = '$' + totalPaid.toFixed(2);
+            document.getElementById('totalValue').textContent = '$' + totalValue.toFixed(2);
+            document.getElementById('totalPreviousValue').textContent = '$' + totalPreviousValue.toFixed(2);
+            document.getElementById('totalTodayChange').textContent = '$' + totalTodayChange.toFixed(2);
+            document.getElementById('totalGainLoss').textContent = '$' + totalGainLoss.toFixed(2);
+
+            // Update color classes for totals
+            const todayChangeElement = document.getElementById('totalTodayChange');
+            const gainLossElement = document.getElementById('totalGainLoss');
+            
+            todayChangeElement.className = totalTodayChange >= 0 ? 'positive' : 'negative';
+            gainLossElement.className = totalGainLoss >= 0 ? 'positive' : 'negative';
+        }
+
+        // Load risk data from localStorage
+        function loadRiskData() {
+            const saved = localStorage.getItem('riskData');
+            if (saved) {
+                return JSON.parse(saved);
+            }
+            return [];
+        }
+
+        // Get risk level for a ticker symbol
+        function getRiskLevel(ticker) {
+            const riskData = loadRiskData();
+            const riskEntry = riskData.find(entry => entry.ticker.toUpperCase() === ticker.toUpperCase());
+            return riskEntry ? riskEntry.riskLevel : 5; // Default to 5 if not found
+        }
+
+        // Calculate Attach variable using SUMPRODUCT(L13:L20, M13:M20)
+        function calculateAttach() {
+            if (!portfolioData || portfolioData.length === 0) {
+                return 0;
+            }
+
+            const totalValue = portfolioData.reduce((sum, entry) => sum + (entry.value || 0), 0);
+            let attach = 0;
+            
+            portfolioData.forEach((entry) => {
+                const allocationPercent = totalValue > 0 ? (entry.value / totalValue) * 100 : 0;
+                const risk = getRiskLevel(entry.symbol);
+                attach += (allocationPercent / 100) * risk;
+            });
+
+            return Math.floor(attach);
+        }
+
+        // Calculate Shield variable as 10 - Attach
+        function calculateShield() {
+            const attach = calculateAttach();
+            return 10 - attach;
+        }
+
+        // Calculate Power variable as SUMPRODUCT(L13:L20, M13:M20) / 9
+        function calculatePower() {
+            if (!portfolioData || portfolioData.length === 0) {
+                return 0;
+            }
+
+            const totalValue = portfolioData.reduce((sum, entry) => sum + (entry.value || 0), 0);
+            let attach = 0;
+            
+            portfolioData.forEach((entry) => {
+                const allocationPercent = totalValue > 0 ? (entry.value / totalValue) * 100 : 0;
+                const risk = getRiskLevel(entry.symbol);
+                attach += (allocationPercent / 100) * risk;
+            });
+
+            return attach / 9;
+        }
+
+        // Calculate Health variable as Total Gain/Loss + 100%
+        function calculateHealth() {
+            if (!portfolioData || portfolioData.length === 0) {
+                return 100;
+            }
+
+            const totalValue = portfolioData.reduce((sum, entry) => sum + (entry.value || 0), 0);
+            let totalGainLoss = 0;
+            
+            portfolioData.forEach((entry) => {
+                const allocationPercent = totalValue > 0 ? (entry.value / totalValue) * 100 : 0;
+                const gainLossPercent = entry.totalGainLoss && entry.paid ? (entry.totalGainLoss / entry.paid) * 100 : 0;
+                totalGainLoss += (allocationPercent / 100) * gainLossPercent;
+            });
+
+            return totalGainLoss + 100;
+        }
+
+        // Get Attach variable value (background variable)
+        function getAttachValue() {
+            return calculateAttach();
+        }
+
+        // Get Shield variable value (background variable)
+        function getShieldValue() {
+            return calculateShield();
+        }
+
+        // Get Power variable value (background variable)
+        function getPowerValue() {
+            return calculatePower();
+        }
+
+        // Get Health variable value (background variable)
+        function getHealthValue() {
+            return calculateHealth();
+        }
+
+        // Make variables globally accessible
+        window.Attach = getAttachValue;
+        window.Shield = getShieldValue;
+        window.Power = getPowerValue;
+        window.Health = getHealthValue;
+
+        // Debug: Log variable values to console
+        console.log('Attach variable created. Current value:', getAttachValue());
+        console.log('Shield variable created. Current value:', getShieldValue());
+        console.log('Power variable created. Current value:', getPowerValue());
+        console.log('Health variable created. Current value:', getHealthValue());
+
+        // Test function to debug price fetching
+        async function testPriceFetch(symbol) {
+            try {
+                console.log(`Testing price fetch for ${symbol}...`);
+                const priceData = await fetchStockPrice(symbol);
+                console.log(`Price data for ${symbol}:`, priceData);
+                return priceData;
+            } catch (error) {
+                console.error(`Error testing price fetch for ${symbol}:`, error);
+                return null;
+            }
+        }
+
+        // Make test function globally accessible
+        window.testPriceFetch = testPriceFetch;
+
+        // Function to check current portfolio data
+        function checkPortfolioData() {
+            console.log('Current portfolio data:', portfolioData);
+            portfolioData.forEach((entry, index) => {
+                console.log(`Entry ${index}:`, {
+                    symbol: entry.symbol,
+                    currentPrice: entry.currentPrice,
+                    previousClose: entry.previousClose,
+                    hasPreviousClose: entry.previousClose !== null && entry.previousClose !== undefined
+                });
+            });
+        }
+
+        // Make check function globally accessible
+        window.checkPortfolioData = checkPortfolioData;
+
+        // Function to force update previous close values for existing entries
+        async function forceUpdatePreviousClose() {
+            console.log('Force updating previous close values...');
+            
+            // Get all unique symbols that are not CASH
+            const symbols = [...new Set(portfolioData
+                .filter(entry => entry.symbol && entry.symbol !== 'CASH')
+                .map(entry => entry.symbol.toUpperCase())
+            )];
+            
+            console.log('Symbols to update:', symbols);
+            
+            let updatedCount = 0;
+            
+            for (const symbol of symbols) {
+                try {
+                    console.log(`Fetching data for ${symbol}...`);
+                    const priceData = await fetchStockPrice(symbol);
+                    
+                    if (priceData && priceData.currentPrice && priceData.previousClose) {
+                        // Update all entries with this symbol
+                        portfolioData.forEach(entry => {
+                            if (entry.symbol && entry.symbol.toUpperCase() === symbol) {
+                                entry.currentPrice = priceData.currentPrice;
+                                entry.previousClose = priceData.previousClose;
+                                updatedCount++;
+                                console.log(`Updated ${symbol}: Current $${priceData.currentPrice}, Previous Close $${priceData.previousClose}`);
+                            }
+                        });
+                    } else {
+                        console.warn(`No valid price data for ${symbol}`);
+                    }
+                } catch (error) {
+                    console.error(`Error fetching data for ${symbol}:`, error);
+                }
+            }
+            
+            if (updatedCount > 0) {
+                // Recalculate values and totals
+                portfolioData.forEach(entry => {
+                    if (entry.currentPrice && entry.shares) {
+                        entry.value = entry.currentPrice * entry.shares;
+                        entry.totalGainLoss = entry.value - entry.paid;
+                        
+                        // Calculate previous value
+                        if (entry.previousClose && entry.shares) {
+                            entry.previousValue = entry.previousClose * entry.shares;
+                        } else if (entry.symbol === 'CASH') {
+                            entry.previousValue = entry.paid;
+                        } else {
+                            entry.previousValue = entry.paid;
+                        }
+                        
+                        // Calculate today's change based on current price vs previous day's closing price
+                        if (entry.previousClose) {
+                            const currentValue = entry.currentPrice * entry.shares;
+                            const previousValue = entry.previousClose * entry.shares;
+                            entry.todayChange = currentValue - previousValue;
+                        }
+                    } else if (entry.symbol === 'CASH') {
+                        entry.previousValue = entry.paid;
+                        entry.todayChange = 0; // Cash doesn't change
+                    }
+                });
+                
+                // Save and refresh
+                saveData();
+                renderTable();
+                updateRunesBackground();
+                
+                console.log(`Successfully updated ${updatedCount} entries with previous close values.`);
+            } else {
+                console.log('No entries were updated.');
+            }
+        }
+
+        // Make force update function globally accessible
+        window.forceUpdatePreviousClose = forceUpdatePreviousClose;
+
+        function openAddModal() {
+            editingIndex = -1;
+            document.getElementById('modalTitle').textContent = 'Add New Entry';
+            document.getElementById('entryForm').reset();
+            document.getElementById('entryModal').style.display = 'block';
+        }
+
+        function editEntry(index) {
+            editingIndex = index;
+            const entry = portfolioData[index];
+            
+            document.getElementById('modalTitle').textContent = 'Edit Entry';
+            document.getElementById('symbol').value = entry.symbol || '';
+            document.getElementById('buyPrice').value = entry.buyPrice || '';
+            document.getElementById('shares').value = entry.shares || '';
+            document.getElementById('paid').value = entry.paid || '';
+            //document.getElementById('currentPrice').value = entry.currentPrice || '';
+            //document.getElementById('previousClose').value = entry.previousClose || '';
+            //document.getElementById('todayChange').value = entry.todayChange || '';
+            
+            document.getElementById('entryModal').style.display = 'block';
+        }
+
+        function saveEntry() {
+            const form = document.getElementById('entryForm');
+            const formData = new FormData(form);
+            
+            const entry = {
+                symbol: formData.get('symbol'),
+                buyPrice: parseFloat(formData.get('buyPrice')) || null,
+                shares: parseFloat(formData.get('shares')) || null,
+                paid: parseFloat(formData.get('paid')) || 0,
+                currentPrice: parseFloat(formData.get('currentPrice')) || null,
+                previousClose: parseFloat(formData.get('previousClose')) || null,
+                todayChange: 0 // Will be calculated below
+            };
+
+            // Calculate value and total gain/loss
+            if (entry.currentPrice && entry.shares) {
+                entry.value = entry.currentPrice * entry.shares;
+            } else if (entry.symbol === 'CASH') {
+                entry.value = entry.paid;
+            } else {
+                entry.value = entry.paid; // Default to paid amount if no current price
+            }
+
+            // Calculate previous value
+            if (entry.previousClose && entry.shares) {
+                entry.previousValue = entry.previousClose * entry.shares;
+            } else if (entry.symbol === 'CASH') {
+                entry.previousValue = entry.paid;
+            } else {
+                entry.previousValue = entry.paid; // Default to paid amount if no previous close
+            }
+
+            entry.totalGainLoss = entry.value - entry.paid;
+            
+            // Calculate today's change based on current price vs previous day's closing price
+            if (entry.currentPrice && entry.previousClose && entry.shares) {
+                const currentValue = entry.currentPrice * entry.shares;
+                const previousValue = entry.previousClose * entry.shares;
+                entry.todayChange = currentValue - previousValue;
+            } else if (entry.symbol === 'CASH') {
+                entry.todayChange = 0; // Cash doesn't change
+            } else {
+                entry.todayChange = 0; // Default to 0 if no current price or previous close
+            }
+
+            if (editingIndex === -1) {
+                portfolioData.push(entry);
+            } else {
+                portfolioData[editingIndex] = entry;
+            }
+
+            saveData();
+            renderTable();
+            closeModal();
+        }
+
+        function deleteEntry(index) {
+            if (confirm('Are you sure you want to delete this entry?')) {
+                portfolioData.splice(index, 1);
+                saveData();
+                renderTable();
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('entryModal').style.display = 'none';
+        }
+
+        function clearAllData() {
+            if (confirm('Are you sure you want to clear all data? This cannot be undone.')) {
+                portfolioData = [];
+                saveData();
+                renderTable();
+            }
+        }
+
+        function loadSampleData() {
+            if (confirm('This will replace all current data with sample data. Continue?')) {
+                portfolioData = [...sampleData];
+                saveData();
+                renderTable();
+            }
+        }
+
+        function exportData() {
+            const dataStr = JSON.stringify(portfolioData, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'portfolio-data.json';
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function importData() {
+            document.getElementById('fileInput').click();
+        }
+
+        function handleFileImport(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const importedData = JSON.parse(e.target.result);
+                        if (confirm('This will replace all current data. Continue?')) {
+                            portfolioData = importedData;
+                            saveData();
+                            renderTable();
+                        }
+                    } catch (error) {
+                        alert('Error importing file. Please make sure it\'s a valid JSON file.');
+                    }
+                };
+                reader.readAsText(file);
+            }
+        }
+
+        // Automatically fetch current prices silently on page load
+        async function autoFetchCurrentPrices() {
+            try {
+                // Get all unique symbols that are not CASH
+                const symbols = [...new Set(portfolioData
+                    .filter(entry => entry.symbol && entry.symbol !== 'CASH')
+                    .map(entry => entry.symbol.toUpperCase())
+                )];
+                
+                if (symbols.length === 0) {
+                    return; // No symbols to fetch
+                }
+                
+                // Fetch prices for each symbol
+                const pricePromises = symbols.map(async (symbol) => {
+                    try {
+                        const priceData = await fetchStockPrice(symbol);
+                        return { symbol, priceData };
+                    } catch (error) {
+                        console.warn(`Failed to fetch price for ${symbol}:`, error.message);
+                        return { symbol, priceData: null };
+                    }
+                });
+                
+                const results = await Promise.all(pricePromises);
+                
+                // Update portfolio data with fetched prices
+                let hasUpdates = false;
+                results.forEach(({ symbol, priceData }) => {
+                    if (priceData !== null) {
+                        // Update all entries with this symbol
+                        portfolioData.forEach(entry => {
+                            if (entry.symbol && entry.symbol.toUpperCase() === symbol) {
+                                entry.currentPrice = priceData.currentPrice;
+                                entry.previousClose = priceData.previousClose;
+                                hasUpdates = true;
+                            }
+                        });
+                    }
+                });
+                
+                if (hasUpdates) {
+                    // Recalculate values and totals
+                    portfolioData.forEach(entry => {
+                        if (entry.currentPrice && entry.shares) {
+                            entry.value = entry.currentPrice * entry.shares;
+                            entry.totalGainLoss = entry.value - entry.paid;
+                            
+                            // Calculate previous value
+                            if (entry.previousClose && entry.shares) {
+                                entry.previousValue = entry.previousClose * entry.shares;
+                            } else if (entry.symbol === 'CASH') {
+                                entry.previousValue = entry.paid;
+                            } else {
+                                entry.previousValue = entry.paid;
+                            }
+                            
+                            // Calculate today's change based on current price vs previous day's closing price
+                            if (entry.previousClose) {
+                                const currentValue = entry.currentPrice * entry.shares;
+                                const previousValue = entry.previousClose * entry.shares;
+                                entry.todayChange = currentValue - previousValue;
+                            }
+                        } else if (entry.symbol === 'CASH') {
+                            entry.previousValue = entry.paid;
+                            entry.todayChange = 0; // Cash doesn't change
+                        }
+                    });
+                    
+                    // Save and refresh
+                    saveData();
+                    renderTable();
+                    updateRunesBackground();
+                }
+                
+            } catch (error) {
+                console.warn('Auto price fetch failed:', error);
+                // Fail silently - don't show any user messages
+            }
+        }
+
+        // Fetch current prices from Yahoo Finance API (manual button)
+        async function fetchCurrentPrices() {
+            const button = event.target;
+            const originalText = button.textContent;
+            
+            // Show loading state
+            button.textContent = '⏳ Fetching Prices...';
+            button.disabled = true;
+            
+            try {
+                // Get all unique symbols that are not CASH
+                const symbols = [...new Set(portfolioData
+                    .filter(entry => entry.symbol && entry.symbol !== 'CASH')
+                    .map(entry => entry.symbol.toUpperCase())
+                )];
+                
+                if (symbols.length === 0) {
+                    alert('No stock symbols found to fetch prices for.');
+                    return;
+                }
+                
+                console.log('Fetching prices for symbols:', symbols);
+                
+                // Fetch prices for each symbol
+                const pricePromises = symbols.map(async (symbol) => {
+                    try {
+                        const priceData = await fetchStockPrice(symbol);
+                        return { symbol, priceData };
+                    } catch (error) {
+                        console.error(`Error fetching price for ${symbol}:`, error);
+                        return { symbol, priceData: null, error: error.message };
+                    }
+                });
+                
+                const results = await Promise.all(pricePromises);
+                
+                // Update portfolio data with fetched prices
+                let updatedCount = 0;
+                let errorCount = 0;
+                
+                results.forEach(({ symbol, priceData, error }) => {
+                    if (priceData !== null) {
+                        // Update all entries with this symbol
+                        portfolioData.forEach(entry => {
+                            if (entry.symbol && entry.symbol.toUpperCase() === symbol) {
+                                entry.currentPrice = priceData.currentPrice;
+                                entry.previousClose = priceData.previousClose;
+                                updatedCount++;
+                            }
+                        });
+                    } else {
+                        errorCount++;
+                        console.error(`Failed to fetch price for ${symbol}: ${error}`);
+                    }
+                });
+                
+                // Recalculate values and totals
+                portfolioData.forEach(entry => {
+                    if (entry.currentPrice && entry.shares) {
+                        entry.value = entry.currentPrice * entry.shares;
+                        entry.totalGainLoss = entry.value - entry.paid;
+                        
+                        // Calculate previous value
+                        if (entry.previousClose && entry.shares) {
+                            entry.previousValue = entry.previousClose * entry.shares;
+                        } else if (entry.symbol === 'CASH') {
+                            entry.previousValue = entry.paid;
+                        } else {
+                            entry.previousValue = entry.paid;
+                        }
+                        
+                        // Calculate today's change based on current price vs previous day's closing price
+                        if (entry.previousClose) {
+                            const currentValue = entry.currentPrice * entry.shares;
+                            const previousValue = entry.previousClose * entry.shares;
+                            entry.todayChange = currentValue - previousValue;
+                        }
+                    } else if (entry.symbol === 'CASH') {
+                        entry.previousValue = entry.paid;
+                        entry.todayChange = 0; // Cash doesn't change
+                    }
+                });
+                
+                // Save and refresh
+                saveData();
+                renderTable();
+                updateRunesBackground();
+                
+                // Silent operation - no user messages
+                console.log(`Updated prices for ${updatedCount} entries.${errorCount > 0 ? ` ${errorCount} symbols failed to fetch.` : ''}`);
+                
+            } catch (error) {
+                console.error('Error fetching prices:', error);
+                // Silent operation - no user messages
+            } finally {
+                // Restore button state
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        // Fetch stock price using multiple methods with fallbacks
+        async function fetchStockPrice(symbol) {
+            const methods = [
+                () => fetchStockPriceViaProxy(symbol),
+                () => fetchStockPriceViaIEX(symbol),
+                () => fetchStockPriceViaAlphaVantage(symbol),
+                () => fetchStockPriceViaFinnhub(symbol)
+            ];
+            
+            for (let i = 0; i < methods.length; i++) {
+                try {
+                    console.log(`Trying method ${i + 1} for ${symbol}`);
+                    const priceData = await methods[i]();
+                    if (priceData && priceData.currentPrice && priceData.currentPrice > 0) {
+                        console.log(`Successfully fetched price for ${symbol}: Current $${priceData.currentPrice}, Previous Close $${priceData.previousClose}`);
+                        return priceData;
+                    }
+                } catch (error) {
+                    console.warn(`Method ${i + 1} failed for ${symbol}:`, error.message);
+                    if (i === methods.length - 1) {
+                        throw error; // Re-throw if all methods failed
+                    }
+                }
+            }
+        }
+        
+        // Method 1: Using CORS proxy for Yahoo Finance
+        async function fetchStockPriceViaProxy(symbol) {
+            try {
+                // Using a CORS proxy service
+                const proxyUrl = 'https://api.allorigins.win/raw?url=';
+                const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}`;
+                const url = proxyUrl + encodeURIComponent(yahooUrl);
+                
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (!data.chart || !data.chart.result || data.chart.result.length === 0) {
+                    throw new Error('No data returned from API');
+                }
+                
+                const result = data.chart.result[0];
+                const meta = result.meta;
+                
+                if (!meta || meta.regularMarketPrice === undefined) {
+                    throw new Error('Price data not available');
+                }
+                
+                return {
+                    currentPrice: meta.regularMarketPrice,
+                    previousClose: meta.previousClose || meta.regularMarketPrice
+                };
+                
+            } catch (error) {
+                console.error(`Proxy method failed for ${symbol}:`, error);
+                throw error;
+            }
+        }
+        
+        // Method 2: Using IEX Cloud (free tier)
+        async function fetchStockPriceViaIEX(symbol) {
+            try {
+                // IEX Cloud free API (limited requests per month)
+                const apiKey = 'pk_test_1234567890abcdef'; // Free test key
+                const url = `https://cloud.iexapis.com/stable/stock/${symbol}/quote?token=${apiKey}`;
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.latestPrice && data.latestPrice > 0) {
+                    return {
+                        currentPrice: data.latestPrice,
+                        previousClose: data.previousClose || data.latestPrice
+                    };
+                }
+                
+                throw new Error('Price data not available');
+                
+            } catch (error) {
+                console.error(`IEX method failed for ${symbol}:`, error);
+                throw error;
+            }
+        }
+        
+        // Method 3: Using Alpha Vantage (free tier)
+        async function fetchStockPriceViaAlphaVantage(symbol) {
+            try {
+                // Alpha Vantage free API (limited requests per day)
+                const apiKey = 'demo'; // Using demo key for free access
+                const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${apiKey}`;
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data['Global Quote'] && data['Global Quote']['05. price']) {
+                    const currentPrice = parseFloat(data['Global Quote']['05. price']);
+                    const previousClose = parseFloat(data['Global Quote']['08. previous close']) || currentPrice;
+                    return {
+                        currentPrice: currentPrice,
+                        previousClose: previousClose
+                    };
+                }
+                
+                throw new Error('Price data not available');
+                
+            } catch (error) {
+                console.error(`Alpha Vantage method failed for ${symbol}:`, error);
+                throw error;
+            }
+        }
+        
+        // Method 4: Using Finnhub (free tier)
+        async function fetchStockPriceViaFinnhub(symbol) {
+            try {
+                // Finnhub free API (limited requests per minute)
+                const apiKey = 'demo'; // Using demo key for free access
+                const url = `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`;
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.c && data.c > 0) {
+                    return {
+                        currentPrice: data.c, // Current price
+                        previousClose: data.pc || data.c // Previous close price
+                    };
+                }
+                
+                throw new Error('Price data not available');
+                
+            } catch (error) {
+                console.error(`Finnhub method failed for ${symbol}:`, error);
+                throw error;
+            }
+        }
+
+        // Manual price entry functions
+        function openManualPriceModal() {
+            const modal = document.getElementById('manualPriceModal');
+            const content = document.getElementById('manualPriceContent');
+            
+            // Get all unique symbols that are not CASH
+            const symbols = [...new Set(portfolioData
+                .filter(entry => entry.symbol && entry.symbol !== 'CASH')
+                .map(entry => entry.symbol.toUpperCase())
+            )];
+            
+            if (symbols.length === 0) {
+                alert('No stock symbols found to update prices for.');
+                return;
+            }
+            
+            // Create form content
+            let formHTML = '<p style="margin-bottom: 20px; color: #ccc;">Enter current prices for your stocks:</p>';
+            
+            symbols.forEach(symbol => {
+                const currentPrice = portfolioData.find(entry => 
+                    entry.symbol && entry.symbol.toUpperCase() === symbol
+                )?.currentPrice || '';
+                
+                formHTML += `
+                    <div class="form-group">
+                        <label for="price_${symbol}">${symbol} Current Price:</label>
+                        <input type="number" id="price_${symbol}" step="0.01" placeholder="0.00" value="${currentPrice}">
+                    </div>
+                `;
+            });
+            
+            content.innerHTML = formHTML;
+            modal.style.display = 'block';
+        }
+        
+        function closeManualPriceModal() {
+            document.getElementById('manualPriceModal').style.display = 'none';
+        }
+        
+        function saveManualPrices() {
+            const symbols = [...new Set(portfolioData
+                .filter(entry => entry.symbol && entry.symbol !== 'CASH')
+                .map(entry => entry.symbol.toUpperCase())
+            )];
+            
+            let updatedCount = 0;
+            
+            symbols.forEach(symbol => {
+                const priceInput = document.getElementById(`price_${symbol}`);
+                const price = parseFloat(priceInput.value);
+                
+                if (!isNaN(price) && price > 0) {
+                    // Update all entries with this symbol
+                    portfolioData.forEach(entry => {
+                        if (entry.symbol && entry.symbol.toUpperCase() === symbol) {
+                            entry.currentPrice = price;
+                            updatedCount++;
+                        }
+                    });
+                }
+            });
+            
+            // Recalculate values and totals
+            portfolioData.forEach(entry => {
+                if (entry.currentPrice && entry.shares) {
+                    entry.value = entry.currentPrice * entry.shares;
+                    entry.totalGainLoss = entry.value - entry.paid;
+                    
+                    // Calculate previous value
+                    if (entry.previousClose && entry.shares) {
+                        entry.previousValue = entry.previousClose * entry.shares;
+                    } else if (entry.symbol === 'CASH') {
+                        entry.previousValue = entry.paid;
+                    } else {
+                        entry.previousValue = entry.paid;
+                    }
+                    
+                    // Calculate today's change based on current price vs previous day's closing price
+                    if (entry.previousClose) {
+                        const currentValue = entry.currentPrice * entry.shares;
+                        const previousValue = entry.previousClose * entry.shares;
+                        entry.todayChange = currentValue - previousValue;
+                    }
+                } else if (entry.symbol === 'CASH') {
+                    entry.previousValue = entry.paid;
+                    entry.todayChange = 0; // Cash doesn't change
+                }
+            });
+            
+            // Save and refresh
+            saveData();
+            renderTable();
+            closeManualPriceModal();
+            
+            console.log(`Successfully updated prices for ${updatedCount} entries.`);
+        }
+
+        // Drag and Drop functionality
+        let draggedElement = null;
+        let draggedIndex = null;
+
+        function addDragAndDropListeners() {
+            const rows = document.querySelectorAll('.draggable-row');
+            
+            rows.forEach(row => {
+                row.addEventListener('dragstart', handleDragStart);
+                row.addEventListener('dragend', handleDragEnd);
+                row.addEventListener('dragover', handleDragOver);
+                row.addEventListener('drop', handleDrop);
+                row.addEventListener('dragenter', handleDragEnter);
+                row.addEventListener('dragleave', handleDragLeave);
+            });
+        }
+
+        function handleDragStart(e) {
+            draggedElement = this;
+            draggedIndex = parseInt(this.dataset.index);
+            this.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', this.outerHTML);
+        }
+
+        function handleDragEnd(e) {
+            this.classList.remove('dragging');
+            
+            // Remove all drag-over classes
+            const rows = document.querySelectorAll('.draggable-row');
+            rows.forEach(row => {
+                row.classList.remove('drag-over');
+            });
+            
+            draggedElement = null;
+            draggedIndex = null;
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+        }
+
+        function handleDragEnter(e) {
+            e.preventDefault();
+            if (this !== draggedElement) {
+                this.classList.add('drag-over');
+            }
+        }
+
+        function handleDragLeave(e) {
+            this.classList.remove('drag-over');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            this.classList.remove('drag-over');
+            
+            if (this === draggedElement) {
+                return;
+            }
+            
+            const dropIndex = parseInt(this.dataset.index);
+            
+            // Reorder the portfolio data array
+            const draggedItem = portfolioData[draggedIndex];
+            portfolioData.splice(draggedIndex, 1);
+            portfolioData.splice(dropIndex, 0, draggedItem);
+            
+            // Save the new order and re-render the table
+            saveData();
+            renderTable();
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const entryModal = document.getElementById('entryModal');
+            const manualPriceModal = document.getElementById('manualPriceModal');
+            
+            if (event.target === entryModal) {
+                closeModal();
+            }
+            if (event.target === manualPriceModal) {
+                closeManualPriceModal();
+            }
+        }
+    </script>
+</body>
+</html>

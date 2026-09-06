@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Allocation - D&D Style</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Crimson Text', serif;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(20, 20, 20, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(15, 15, 15, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 40% 80%, rgba(10, 10, 10, 0.3) 0%, transparent 50%),
+                linear-gradient(135deg, #000000 0%, #050505 25%, #0a0a0a 50%, #0f0f0f 75%, #000000 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+            padding: 20px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 25% 25%, rgba(100, 100, 100, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 75% 75%, rgba(80, 80, 80, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .title {
+            font-family: 'Cinzel', serif;
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            text-shadow: 
+                2px 2px 0px #333,
+                4px 4px 8px rgba(0, 0, 0, 0.8);
+            background: linear-gradient(45deg, #e0e0e0, #f0f0f0, #d0d0d0, #c0c0c0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .nav-link {
+            color: #ccc;
+            text-decoration: none;
+            font-family: 'Cinzel', serif;
+            font-size: 1.1rem;
+            margin: 0 10px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            background: rgba(15, 15, 15, 0.8);
+            border: 2px solid rgba(20, 20, 20, 0.5);
+            transition: all 0.3s ease;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        .nav-link:hover {
+            background: rgba(20, 20, 20, 0.9);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(100, 100, 100, 0.3);
+        }
+
+        .data-container {
+            background: 
+                linear-gradient(145deg, rgba(15, 15, 15, 0.6) 0%, rgba(20, 20, 20, 0.5) 50%, rgba(10, 10, 10, 0.6) 100%);
+            backdrop-filter: blur(5px);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 
+                0 0 30px rgba(100, 100, 100, 0.2),
+                inset 0 0 20px rgba(0, 0, 0, 0.5),
+                0 8px 32px rgba(0, 0, 0, 0.8);
+            border: 3px solid rgba(20, 20, 20, 0.5);
+            position: relative;
+            opacity: 0.85;
+        }
+
+        .data-container::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: rgba(20, 20, 20, 0.5);
+            border-radius: 17px;
+            z-index: -1;
+        }
+
+        .table-section {
+            margin-bottom: 40px;
+        }
+
+        .table-section h2 {
+            font-family: 'Cinzel', serif;
+            font-size: 2rem;
+            margin-bottom: 20px;
+            color: #ccc;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+            text-align: center;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            border-radius: 10px;
+            background: 
+                linear-gradient(145deg, rgba(30, 30, 30, 0.8), rgba(40, 40, 40, 0.6));
+            border: 2px solid rgba(20, 20, 20, 0.5);
+            box-shadow: 
+                inset 0 2px 4px rgba(0, 0, 0, 0.5),
+                0 4px 8px rgba(0, 0, 0, 0.4);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: rgba(15, 15, 15, 0.5);
+        }
+
+        th, td {
+            padding: 12px 8px;
+            text-align: left;
+            border-bottom: 1px solid rgba(100, 100, 100, 0.3);
+            font-family: 'Crimson Text', serif;
+            color: #e0e0e0;
+        }
+
+        th {
+            background: 
+                linear-gradient(145deg, rgba(30, 30, 30, 0.9), rgba(40, 40, 40, 0.7));
+            font-weight: bold;
+            font-family: 'Cinzel', serif;
+            color: #ccc;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+            position: sticky;
+            top: 0;
+            border-bottom: 2px solid rgba(20, 20, 20, 0.5);
+        }
+
+        tr:hover {
+            background: rgba(100, 100, 100, 0.1);
+        }
+
+        .positive {
+            color: #27ae60;
+            text-shadow: 0 0 5px rgba(39, 174, 96, 0.5);
+        }
+
+        .negative {
+            color: #e74c3c;
+            text-shadow: 0 0 5px rgba(231, 76, 60, 0.5);
+        }
+
+        .editable-input {
+            background: rgba(20, 20, 20, 0.6);
+            border: 1px solid rgba(100, 100, 100, 0.3);
+            border-radius: 4px;
+            padding: 6px 8px;
+            color: #e0e0e0;
+            font-family: 'Crimson Text', serif;
+            font-size: 1rem;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .editable-input:focus {
+            outline: none;
+            border-color: #4a90e2;
+            box-shadow: 0 0 5px rgba(74, 144, 226, 0.5);
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: 2px solid;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-family: 'Cinzel', serif;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #4a90e2 0%, #7bb3f0 100%);
+            border-color: #4a90e2;
+            color: white;
+        }
+
+        .btn-danger {
+            background: linear-gradient(45deg, #e74c3c 0%, #c0392b 100%);
+            border-color: #e74c3c;
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .table-controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            justify-content: center;
+        }
+
+        .actions-cell {
+            text-align: center;
+        }
+
+        .actions-cell .btn {
+            padding: 6px 12px;
+            font-size: 0.85rem;
+            margin: 0 3px;
+        }
+
+        @media (max-width: 768px) {
+            .title {
+                font-size: 2rem;
+            }
+            
+            .table-section h2 {
+                font-size: 1.5rem;
+            }
+            
+            table {
+                font-size: 0.9rem;
+            }
+            
+            th, td {
+                padding: 8px 4px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">Allocation</h1>
+            <div>
+                <a href="index.html" class="nav-link">← Back to Home</a>
+                <a href="data.html" class="nav-link">📊 Portfolio</a>
+                <a href="risk.html" class="nav-link">🛡️ Risk</a>
+                <a href="buy-sell.html" class="nav-link">💰 Buy/Sell</a>
+            </div>
+        </div>
+
+        <div class="data-container">
+            <div class="table-section">
+                <h2>Portfolio Allocation</h2>
+                <div class="table-container">
+                    <table id="allocationTable">
+                        <thead>
+                            <tr>
+                                <th>Ticker</th>
+                                <th>Current Price</th>
+                                <th>Shares</th>
+                                <th>Current Value</th>
+                                <th>Allocation %</th>
+                            </tr>
+                        </thead>
+                        <tbody id="allocationTableBody">
+                            <!-- Data will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="table-section">
+                <h2>Future Allocation Changes</h2>
+                <div style="text-align: center; margin-bottom: 15px; color: #ccc; font-family: 'Cinzel', serif;">
+                    <span>Current Portfolio Total: <strong id="currentPortfolioTotalDisplay">$0.00</strong></span>
+                    <span style="margin-left: 30px;">Allocations sum to 100% when Future Total = Current Total</span>
+                </div>
+                <div class="table-controls">
+                    <button class="btn btn-primary" onclick="addFutureAllocationRow()">+ Add Row</button>
+                    <button class="btn btn-primary" onclick="updateFutureAllocationPrices()">🔄 Update Prices</button>
+                    <button class="btn btn-primary" onclick="saveFutureAllocations()">💾 Save Changes</button>
+                </div>
+                <div class="table-container">
+                    <table id="futureAllocationTable">
+                        <thead>
+                            <tr>
+                                <th>Ticker</th>
+                                <th>Current Price</th>
+                                <th>Shares</th>
+                                <th>Current Value</th>
+                                <th>Allocation %</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="futureAllocationTableBody">
+                            <!-- Data will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Load portfolio data from localStorage
+        function loadPortfolioData() {
+            const saved = localStorage.getItem('portfolioData');
+            if (saved) {
+                return JSON.parse(saved);
+            }
+            return [];
+        }
+
+        // Display allocation table
+        function displayAllocationTable() {
+            const tableBody = document.getElementById('allocationTableBody');
+            tableBody.innerHTML = '';
+
+            const portfolioData = loadPortfolioData();
+
+            if (!portfolioData || portfolioData.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px;">No Portfolio Data - Add data in the management page</td></tr>';
+                // Update display and recalculate future allocations
+                document.getElementById('currentPortfolioTotalDisplay').textContent = '$0.00';
+                recalculateFutureAllocations();
+                return;
+            }
+
+            // Calculate total portfolio value for allocation percentages
+            const totalPortfolioValue = portfolioData.reduce((sum, entry) => sum + (entry.value || 0), 0);
+            
+            // Update the current portfolio total display
+            document.getElementById('currentPortfolioTotalDisplay').textContent = '$' + totalPortfolioValue.toFixed(2);
+
+            portfolioData.forEach((entry) => {
+                const row = document.createElement('tr');
+                
+                const currentPrice = entry.symbol === 'CASH' ? '0.00' : (entry.currentPrice ? entry.currentPrice.toFixed(2) : 'N/A');
+                const shares = entry.shares ? entry.shares.toFixed(2) : '0.00';
+                const currentValue = entry.value ? entry.value.toFixed(2) : '0.00';
+                const allocation = totalPortfolioValue > 0 
+                    ? ((entry.value / totalPortfolioValue) * 100).toFixed(2) + '%'
+                    : '0.00%';
+
+                row.innerHTML = `
+                    <td><strong>${entry.symbol || ''}</strong></td>
+                    <td>$${currentPrice}</td>
+                    <td>${shares}</td>
+                    <td>$${currentValue}</td>
+                    <td>${allocation}</td>
+                `;
+
+                tableBody.appendChild(row);
+            });
+
+            // Add summary row
+            const summaryRow = document.createElement('tr');
+            summaryRow.style.fontWeight = 'bold';
+            summaryRow.style.background = 'rgba(100, 100, 100, 0.2)';
+            summaryRow.innerHTML = `
+                <td><strong>TOTAL</strong></td>
+                <td></td>
+                <td></td>
+                <td><strong>$${totalPortfolioValue.toFixed(2)}</strong></td>
+                <td><strong>100.00%</strong></td>
+            `;
+
+            tableBody.appendChild(summaryRow);
+            
+            // Recalculate future allocations when portfolio data changes
+            recalculateFutureAllocations();
+        }
+
+        // Recalculate all future allocation rows when portfolio total changes
+        function recalculateFutureAllocations() {
+            const rows = document.querySelectorAll('#futureAllocationTableBody tr:not(.summary-row)');
+            rows.forEach(row => updateRowValues(row));
+        }
+
+        // Load future allocation data from localStorage
+        function loadFutureAllocations() {
+            const saved = localStorage.getItem('futureAllocations');
+            if (saved) {
+                return JSON.parse(saved);
+            }
+            return [];
+        }
+
+        // Save future allocation data to localStorage
+        function saveFutureAllocations() {
+            const rows = document.querySelectorAll('#futureAllocationTableBody tr:not(.summary-row)');
+            const futureAllocations = [];
+
+            rows.forEach((row) => {
+                const tickerInput = row.querySelector('.ticker-input');
+                const priceInput = row.querySelector('.price-input');
+                const sharesInput = row.querySelector('.shares-input');
+
+                if (tickerInput && priceInput && sharesInput) {
+                    const ticker = tickerInput.value.trim();
+                    const price = parseFloat(priceInput.value) || 0;
+                    const shares = parseFloat(sharesInput.value) || 0;
+                    const value = price * shares;
+
+                    if (ticker) {
+                        futureAllocations.push({
+                            ticker: ticker,
+                            price: price,
+                            shares: shares,
+                            value: value
+                        });
+                    }
+                }
+            });
+
+            localStorage.setItem('futureAllocations', JSON.stringify(futureAllocations));
+            displayFutureAllocationTable();
+            alert('Future allocations saved successfully!');
+        }
+
+        // Get current portfolio total value
+        function getCurrentPortfolioTotal() {
+            const portfolioData = loadPortfolioData();
+            if (!portfolioData || portfolioData.length === 0) {
+                return 0;
+            }
+            return portfolioData.reduce((sum, entry) => sum + (entry.value || 0), 0);
+        }
+
+        // Calculate and update row values
+        function updateRowValues(row) {
+            const priceInput = row.querySelector('.price-input');
+            const sharesInput = row.querySelector('.shares-input');
+            const valueCell = row.querySelector('.value-cell');
+            const allocationCell = row.querySelector('.allocation-cell');
+
+            if (!priceInput || !sharesInput || !valueCell || !allocationCell) return;
+
+            const price = parseFloat(priceInput.value) || 0;
+            const shares = parseFloat(sharesInput.value) || 0;
+            const value = price * shares;
+
+            // Update value cell
+            valueCell.textContent = '$' + value.toFixed(2);
+
+            // Get current portfolio total value (from Portfolio Allocation table)
+            const currentPortfolioTotal = getCurrentPortfolioTotal();
+
+            // Update allocation percentage based on current portfolio total
+            // When future allocation total = current portfolio total, allocations will sum to 100%
+            const allocation = currentPortfolioTotal > 0 ? ((value / currentPortfolioTotal) * 100).toFixed(2) + '%' : '0.00%';
+            allocationCell.textContent = allocation;
+
+            // Update summary row
+            updateFutureAllocationSummary();
+        }
+
+        // Update summary row
+        function updateFutureAllocationSummary() {
+            let summaryRow = document.querySelector('#futureAllocationTableBody .summary-row');
+            if (!summaryRow) {
+                summaryRow = document.createElement('tr');
+                summaryRow.className = 'summary-row';
+                summaryRow.style.fontWeight = 'bold';
+                summaryRow.style.background = 'rgba(100, 100, 100, 0.2)';
+                document.getElementById('futureAllocationTableBody').appendChild(summaryRow);
+            }
+
+            const rows = document.querySelectorAll('#futureAllocationTableBody tr:not(.summary-row)');
+            let totalValue = 0;
+            let totalAllocation = 0;
+            
+            rows.forEach((row) => {
+                const price = parseFloat(row.querySelector('.price-input')?.value) || 0;
+                const shares = parseFloat(row.querySelector('.shares-input')?.value) || 0;
+                totalValue += price * shares;
+                
+                // Sum up allocation percentages
+                const allocationText = row.querySelector('.allocation-cell')?.textContent || '0.00%';
+                const allocationNum = parseFloat(allocationText.replace('%', '')) || 0;
+                totalAllocation += allocationNum;
+            });
+
+            // Get current portfolio total for reference
+            const currentPortfolioTotal = getCurrentPortfolioTotal();
+
+            summaryRow.innerHTML = `
+                <td><strong>TOTAL</strong></td>
+                <td></td>
+                <td></td>
+                <td><strong>$${totalValue.toFixed(2)}</strong></td>
+                <td><strong>${totalAllocation.toFixed(2)}%</strong></td>
+                <td></td>
+            `;
+        }
+
+        // Add a new row to future allocation table
+        function addFutureAllocationRow(ticker = '', price = '', shares = '') {
+            const tableBody = document.getElementById('futureAllocationTableBody');
+            
+            // Remove summary row temporarily
+            const summaryRow = tableBody.querySelector('.summary-row');
+            if (summaryRow) {
+                summaryRow.remove();
+            }
+
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>
+                    <input type="text" class="editable-input ticker-input" value="${ticker}" placeholder="Ticker" 
+                           onchange="updateTickerPrice(this.closest('tr'))">
+                </td>
+                <td>
+                    <input type="number" step="0.01" class="editable-input price-input" value="${price}" placeholder="0.00" 
+                           onchange="updateRowValues(this.closest('tr'))" oninput="updateRowValues(this.closest('tr'))">
+                </td>
+                <td>
+                    <input type="number" step="0.01" class="editable-input shares-input" value="${shares}" placeholder="0.00" 
+                           onchange="updateRowValues(this.closest('tr'))" oninput="updateRowValues(this.closest('tr'))">
+                </td>
+                <td class="value-cell">$0.00</td>
+                <td class="allocation-cell">0.00%</td>
+                <td class="actions-cell">
+                    <button class="btn btn-danger" onclick="deleteFutureAllocationRow(this)">Delete</button>
+                </td>
+            `;
+
+            tableBody.appendChild(row);
+            
+            // Re-add summary row
+            updateFutureAllocationSummary();
+        }
+
+        // Delete a row from future allocation table
+        function deleteFutureAllocationRow(button) {
+            const row = button.closest('tr');
+            if (confirm('Are you sure you want to delete this row?')) {
+                row.remove();
+                updateFutureAllocationSummary();
+            }
+        }
+
+        // Display future allocation table
+        function displayFutureAllocationTable() {
+            const tableBody = document.getElementById('futureAllocationTableBody');
+            tableBody.innerHTML = '';
+
+            const futureAllocations = loadFutureAllocations();
+
+            if (futureAllocations && futureAllocations.length > 0) {
+                futureAllocations.forEach((entry) => {
+                    addFutureAllocationRow(
+                        entry.ticker || '',
+                        entry.price || '',
+                        entry.shares || ''
+                    );
+                });
+            } else {
+                // Add one empty row by default
+                addFutureAllocationRow();
+            }
+
+            // Update all row values to calculate totals
+            const rows = document.querySelectorAll('#futureAllocationTableBody tr:not(.summary-row)');
+            rows.forEach(row => updateRowValues(row));
+        }
+
+        // Fetch stock price using CORS proxy for Yahoo Finance
+        async function fetchStockPrice(symbol) {
+            try {
+                const proxyUrl = 'https://api.allorigins.win/raw?url=';
+                const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}`;
+                const url = proxyUrl + encodeURIComponent(yahooUrl);
+                
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (!data.chart || !data.chart.result || data.chart.result.length === 0) {
+                    throw new Error('No data returned from API');
+                }
+                
+                const result = data.chart.result[0];
+                const meta = result.meta;
+                
+                if (!meta || meta.regularMarketPrice === undefined) {
+                    throw new Error('Price data not available');
+                }
+                
+                return meta.regularMarketPrice;
+                
+            } catch (error) {
+                console.warn(`Failed to fetch price for ${symbol}:`, error.message);
+                throw error;
+            }
+        }
+
+        // Update price for a single row when ticker changes
+        async function updateTickerPrice(row) {
+            const tickerInput = row.querySelector('.ticker-input');
+            const priceInput = row.querySelector('.price-input');
+            
+            if (!tickerInput || !priceInput) return;
+            
+            const ticker = tickerInput.value.trim().toUpperCase();
+            
+            // Skip CASH entries or empty tickers
+            if (!ticker || ticker === 'CASH') {
+                updateRowValues(row);
+                return;
+            }
+            
+            // Show loading state
+            const originalValue = priceInput.value;
+            priceInput.value = 'Loading...';
+            priceInput.disabled = true;
+            
+            try {
+                const price = await fetchStockPrice(ticker);
+                if (price && price > 0) {
+                    priceInput.value = price.toFixed(2);
+                    // Trigger update to recalculate value and allocation
+                    updateRowValues(row);
+                } else {
+                    priceInput.value = originalValue;
+                    updateRowValues(row);
+                }
+            } catch (error) {
+                console.warn(`Failed to fetch price for ${ticker}:`, error.message);
+                priceInput.value = originalValue;
+                updateRowValues(row);
+            } finally {
+                priceInput.disabled = false;
+            }
+        }
+
+        // Update current prices for all rows in future allocation table
+        async function updateFutureAllocationPrices() {
+            const rows = document.querySelectorAll('#futureAllocationTableBody tr:not(.summary-row)');
+            
+            for (const row of rows) {
+                await updateTickerPrice(row);
+                // Small delay to avoid rate limiting
+                await new Promise(resolve => setTimeout(resolve, 200));
+            }
+        }
+
+        // Load allocation data when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            displayAllocationTable();
+            displayFutureAllocationTable();
+            // Update prices after a short delay to allow table to render
+            setTimeout(() => {
+                updateFutureAllocationPrices();
+            }, 500);
+        });
+    </script>
+</body>
+</html>
+

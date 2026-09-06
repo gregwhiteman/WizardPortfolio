@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MeltUp - D&D Style</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Crimson Text', serif;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(20, 20, 20, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(15, 15, 15, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 40% 80%, rgba(10, 10, 10, 0.3) 0%, transparent 50%),
+                linear-gradient(135deg, #000000 0%, #050505 25%, #0a0a0a 50%, #0f0f0f 75%, #000000 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+            padding: 20px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 25% 25%, rgba(100, 100, 100, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 75% 75%, rgba(80, 80, 80, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .title {
+            font-family: 'Cinzel', serif;
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            text-shadow: 
+                2px 2px 0px #333,
+                4px 4px 8px rgba(0, 0, 0, 0.8);
+            background: linear-gradient(45deg, #e0e0e0, #f0f0f0, #d0d0d0, #c0c0c0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .nav-link {
+            color: #ccc;
+            text-decoration: none;
+            font-family: 'Cinzel', serif;
+            font-size: 1.1rem;
+            margin: 0 10px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            background: rgba(15, 15, 15, 0.8);
+            border: 2px solid rgba(20, 20, 20, 0.5);
+            transition: all 0.3s ease;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        .nav-link:hover {
+            background: rgba(20, 20, 20, 0.9);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(100, 100, 100, 0.3);
+        }
+
+        .data-container {
+            background: 
+                linear-gradient(145deg, rgba(15, 15, 15, 0.6) 0%, rgba(20, 20, 20, 0.5) 50%, rgba(10, 10, 10, 0.6) 100%);
+            backdrop-filter: blur(5px);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 
+                0 0 30px rgba(100, 100, 100, 0.2),
+                inset 0 0 20px rgba(0, 0, 0, 0.5),
+                0 8px 32px rgba(0, 0, 0, 0.8);
+            border: 3px solid rgba(20, 20, 20, 0.5);
+            position: relative;
+            opacity: 0.85;
+        }
+
+        .data-container::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: rgba(20, 20, 20, 0.5);
+            border-radius: 17px;
+            z-index: -1;
+        }
+
+        .table-section {
+            margin-bottom: 40px;
+        }
+
+        .table-section h2 {
+            font-family: 'Cinzel', serif;
+            font-size: 2rem;
+            margin-bottom: 20px;
+            color: #ccc;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+            text-align: center;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            border-radius: 10px;
+            background: 
+                linear-gradient(145deg, rgba(30, 30, 30, 0.8), rgba(40, 40, 40, 0.6));
+            border: 2px solid rgba(20, 20, 20, 0.5);
+            box-shadow: 
+                inset 0 2px 4px rgba(0, 0, 0, 0.5),
+                0 4px 8px rgba(0, 0, 0, 0.4);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: rgba(15, 15, 15, 0.5);
+        }
+
+        th, td {
+            padding: 12px 8px;
+            text-align: left;
+            border-bottom: 1px solid rgba(100, 100, 100, 0.3);
+            font-family: 'Crimson Text', serif;
+            color: #e0e0e0;
+        }
+
+        th {
+            background: 
+                linear-gradient(145deg, rgba(30, 30, 30, 0.9), rgba(40, 40, 40, 0.7));
+            font-weight: bold;
+            font-family: 'Cinzel', serif;
+            color: #ccc;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+            position: sticky;
+            top: 0;
+            border-bottom: 2px solid rgba(20, 20, 20, 0.5);
+        }
+
+        tr:hover {
+            background: rgba(100, 100, 100, 0.1);
+        }
+
+        .positive {
+            color: #27ae60;
+            text-shadow: 0 0 5px rgba(39, 174, 96, 0.5);
+        }
+
+        .negative {
+            color: #e74c3c;
+            text-shadow: 0 0 5px rgba(231, 76, 60, 0.5);
+        }
+
+        .price-cell-container {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .price-value {
+            font-weight: bold;
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            height: 8px;
+            background: rgba(30, 30, 30, 0.8);
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid rgba(100, 100, 100, 0.3);
+            position: relative;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #27ae60 0%, #2ecc71 50%, #f39c12 80%, #e74c3c 100%);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+            box-shadow: 0 0 5px rgba(39, 174, 96, 0.5);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .progress-bar-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .progress-bar-fill.over-target {
+            background: linear-gradient(90deg, #27ae60 0%, #2ecc71 50%, #f39c12 80%, #e74c3c 100%);
+            box-shadow: 0 0 8px rgba(231, 76, 60, 0.6);
+        }
+
+        @media (max-width: 768px) {
+            .title {
+                font-size: 2rem;
+            }
+            
+            .table-section h2 {
+                font-size: 1.5rem;
+            }
+            
+            table {
+                font-size: 0.9rem;
+            }
+            
+            th, td {
+                padding: 8px 4px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">MeltUp</h1>
+            <div>
+                <a href="index.html" class="nav-link">← Back to Home</a>
+                <a href="data.html" class="nav-link">📊 Portfolio</a>
+                <a href="risk.html" class="nav-link">🛡️ Risk</a>
+                <a href="buy-sell.html" class="nav-link">💰 Buy/Sell</a>
+            </div>
+        </div>
+
+        <div class="data-container">
+            <div class="table-section">
+                <h2>Before</h2>
+                <div class="table-container">
+                    <table id="beforeTable">
+                        <thead>
+                            <tr>
+                                <th>Ticker</th>
+                                <th>Current Price</th>
+                                <th>Pre Price</th>
+                                <th>Pre %</th>
+                                <th>Exit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr data-ticker="SP500" data-pre-price="9500">
+                                <td>SP500</td>
+                                <td class="current-price-cell">
+                                    <div class="price-cell-container">
+                                        <div class="price-value">Loading...</div>
+                                        <div class="progress-bar-container">
+                                            <div class="progress-bar-fill" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>$9,500</td>
+                                <td class="pre-percent">Loading...</td>
+                                <td>Q1 2026 (Jan - March)</td>
+                            </tr>
+                            <tr data-ticker="TSLA" data-pre-price="1000">
+                                <td>TSLA</td>
+                                <td class="current-price-cell">
+                                    <div class="price-cell-container">
+                                        <div class="price-value">Loading...</div>
+                                        <div class="progress-bar-container">
+                                            <div class="progress-bar-fill" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>$1,000</td>
+                                <td class="pre-percent">Loading...</td>
+                                <td>Q1 2026 (Jan - March)</td>
+                            </tr>
+                            <tr data-ticker="Gold" data-pre-price="5000">
+                                <td>Gold</td>
+                                <td class="current-price-cell">
+                                    <div class="price-cell-container">
+                                        <div class="price-value">Loading...</div>
+                                        <div class="progress-bar-container">
+                                            <div class="progress-bar-fill" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>$5,000</td>
+                                <td class="pre-percent">Loading...</td>
+                                <td>Q1 2026 (Jan - March)</td>
+                            </tr>
+                            <tr data-ticker="Silver" data-pre-price="100">
+                                <td>Silver</td>
+                                <td class="current-price-cell">
+                                    <div class="price-cell-container">
+                                        <div class="price-value">Loading...</div>
+                                        <div class="progress-bar-container">
+                                            <div class="progress-bar-fill" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>$100</td>
+                                <td class="pre-percent">Loading...</td>
+                                <td>Q1 2026 (Jan - March)</td>
+                            </tr>
+                            <tr data-ticker="XRP" data-pre-price="10">
+                                <td>XRP</td>
+                                <td class="current-price-cell">
+                                    <div class="price-cell-container">
+                                        <div class="price-value">Loading...</div>
+                                        <div class="progress-bar-container">
+                                            <div class="progress-bar-fill" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>$10</td>
+                                <td class="pre-percent">Loading...</td>
+                                <td>Q1 2026 (Jan - March)</td>
+                            </tr>
+                            <tr data-ticker="PLTR" data-pre-price="400">
+                                <td>PLTR</td>
+                                <td class="current-price-cell">
+                                    <div class="price-cell-container">
+                                        <div class="price-value">Loading...</div>
+                                        <div class="progress-bar-container">
+                                            <div class="progress-bar-fill" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>$400</td>
+                                <td class="pre-percent">Loading...</td>
+                                <td>Q1 2026 (Jan - March)</td>
+                            </tr>
+                            <tr data-ticker="BTC" data-pre-price="200000">
+                                <td>BTC</td>
+                                <td class="current-price-cell">
+                                    <div class="price-cell-container">
+                                        <div class="price-value">Loading...</div>
+                                        <div class="progress-bar-container">
+                                            <div class="progress-bar-fill" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>$200,000</td>
+                                <td class="pre-percent">Loading...</td>
+                                <td>Q1 2026 (Jan - March)</td>
+                            </tr>
+                            <tr data-ticker="TLT" data-pre-price="200">
+                                <td>TLT</td>
+                                <td class="current-price-cell">
+                                    <div class="price-cell-container">
+                                        <div class="price-value">Loading...</div>
+                                        <div class="progress-bar-container">
+                                            <div class="progress-bar-fill" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>$200</td>
+                                <td class="pre-percent">Loading...</td>
+                                <td>Q4 2026 (Oct - Dec)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="table-section">
+                <h2>After</h2>
+                <div class="table-container">
+                    <table id="afterTable">
+                        <thead>
+                            <tr>
+                                <th>Ticker</th>
+                                <th>Crash Price</th>
+                                <th>Crash %</th>
+                                <th>Re-Entry</th>
+                                <th>Target</th>
+                                <th>Target %</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr data-ticker="SP500" data-crash-price="1500" data-target-price="5000">
+                                <td>SP500</td>
+                                <td>$1,500</td>
+                                <td class="crash-percent">Loading...</td>
+                                <td>Q4 2026 - Q1 2027</td>
+                                <td>$5,000</td>
+                                <td class="target-percent">Loading...</td>
+                            </tr>
+                            <tr data-ticker="TSLA" data-crash-price="100" data-target-price="800">
+                                <td>TSLA</td>
+                                <td>$100</td>
+                                <td class="crash-percent">Loading...</td>
+                                <td>Q4 2026 - Q1 2027</td>
+                                <td>$800</td>
+                                <td class="target-percent">Loading...</td>
+                            </tr>
+                            <tr data-ticker="Gold" data-crash-price="2000" data-target-price="20000">
+                                <td>Gold</td>
+                                <td>$2,000</td>
+                                <td class="crash-percent">Loading...</td>
+                                <td>Q3 - Q4 2026</td>
+                                <td>$20,000</td>
+                                <td class="target-percent">Loading...</td>
+                            </tr>
+                            <tr data-ticker="Silver" data-crash-price="20" data-target-price="500">
+                                <td>Silver</td>
+                                <td>$20</td>
+                                <td class="crash-percent">Loading...</td>
+                                <td>Q3 - Q4 2026</td>
+                                <td>$500</td>
+                                <td class="target-percent">Loading...</td>
+                            </tr>
+                            <tr data-ticker="XRP" data-crash-price="0.1" data-target-price="50">
+                                <td>XRP</td>
+                                <td>$0.10</td>
+                                <td class="crash-percent">Loading...</td>
+                                <td>Q3 - Q4 2026</td>
+                                <td>$50</td>
+                                <td class="target-percent">Loading...</td>
+                            </tr>
+                            <tr data-ticker="PLTR" data-crash-price="20" data-target-price="400">
+                                <td>PLTR</td>
+                                <td>$20</td>
+                                <td class="crash-percent">Loading...</td>
+                                <td>Q3 - Q4 2026</td>
+                                <td>$400</td>
+                                <td class="target-percent">Loading...</td>
+                            </tr>
+                            <tr data-ticker="BTC" data-crash-price="20000" data-target-price="1000000">
+                                <td>BTC</td>
+                                <td>$20,000</td>
+                                <td class="crash-percent">Loading...</td>
+                                <td>Q4 2026 - Q1 2027</td>
+                                <td>$1,000,000</td>
+                                <td class="target-percent">Loading...</td>
+                            </tr>
+                            <tr data-ticker="TLT" data-crash-price="50" data-target-price="60">
+                                <td>TLT</td>
+                                <td>$50</td>
+                                <td class="crash-percent">Loading...</td>
+                                <td>Don't Re-Enter</td>
+                                <td>$60</td>
+                                <td class="target-percent">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Map display ticker names to actual API symbols
+        const tickerSymbolMap = {
+            'SP500': '^GSPC',
+            'TSLA': 'TSLA',
+            'Gold': 'GC=F',
+            'Silver': 'SI=F',
+            'XRP': 'XRP-USD',
+            'PLTR': 'PLTR',
+            'BTC': 'BTC-USD',
+            'TLT': 'TLT'
+        };
+
+        // Fetch stock price using multiple methods with fallbacks
+        async function fetchStockPrice(symbol) {
+            const methods = [
+                () => fetchStockPriceViaProxy(symbol),
+                () => fetchStockPriceViaIEX(symbol),
+                () => fetchStockPriceViaAlphaVantage(symbol),
+                () => fetchStockPriceViaFinnhub(symbol)
+            ];
+            
+            for (let i = 0; i < methods.length; i++) {
+                try {
+                    const priceData = await methods[i]();
+                    if (priceData && priceData.currentPrice && priceData.currentPrice > 0) {
+                        return priceData;
+                    }
+                } catch (error) {
+                    console.warn(`Method ${i + 1} failed for ${symbol}:`, error.message);
+                    if (i === methods.length - 1) {
+                        throw error; // Re-throw if all methods failed
+                    }
+                }
+            }
+        }
+        
+        // Method 1: Using CORS proxy for Yahoo Finance
+        async function fetchStockPriceViaProxy(symbol) {
+            try {
+                const proxyUrl = 'https://api.allorigins.win/raw?url=';
+                const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}`;
+                const url = proxyUrl + encodeURIComponent(yahooUrl);
+                
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (!data.chart || !data.chart.result || data.chart.result.length === 0) {
+                    throw new Error('No data returned from API');
+                }
+                
+                const result = data.chart.result[0];
+                const meta = result.meta;
+                
+                if (!meta || meta.regularMarketPrice === undefined) {
+                    throw new Error('Price data not available');
+                }
+                
+                return {
+                    currentPrice: meta.regularMarketPrice,
+                    previousClose: meta.previousClose || meta.regularMarketPrice
+                };
+                
+            } catch (error) {
+                console.error(`Proxy method failed for ${symbol}:`, error);
+                throw error;
+            }
+        }
+        
+        // Method 2: Using IEX Cloud (free tier)
+        async function fetchStockPriceViaIEX(symbol) {
+            try {
+                const apiKey = 'pk_test_1234567890abcdef';
+                const url = `https://cloud.iexapis.com/stable/stock/${symbol}/quote?token=${apiKey}`;
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.latestPrice && data.latestPrice > 0) {
+                    return {
+                        currentPrice: data.latestPrice,
+                        previousClose: data.previousClose || data.latestPrice
+                    };
+                }
+                
+                throw new Error('Price data not available');
+                
+            } catch (error) {
+                console.error(`IEX method failed for ${symbol}:`, error);
+                throw error;
+            }
+        }
+        
+        // Method 3: Using Alpha Vantage (free tier)
+        async function fetchStockPriceViaAlphaVantage(symbol) {
+            try {
+                const apiKey = 'demo';
+                const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${apiKey}`;
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data['Global Quote'] && data['Global Quote']['05. price']) {
+                    const currentPrice = parseFloat(data['Global Quote']['05. price']);
+                    const previousClose = parseFloat(data['Global Quote']['08. previous close']) || currentPrice;
+                    return {
+                        currentPrice: currentPrice,
+                        previousClose: previousClose
+                    };
+                }
+                
+                throw new Error('Price data not available');
+                
+            } catch (error) {
+                console.error(`Alpha Vantage method failed for ${symbol}:`, error);
+                throw error;
+            }
+        }
+        
+        // Method 4: Using Finnhub (free tier)
+        async function fetchStockPriceViaFinnhub(symbol) {
+            try {
+                const apiKey = 'demo';
+                const url = `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`;
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.c && data.c > 0) {
+                    return {
+                        currentPrice: data.c,
+                        previousClose: data.pc || data.c
+                    };
+                }
+                
+                throw new Error('Price data not available');
+                
+            } catch (error) {
+                console.error(`Finnhub method failed for ${symbol}:`, error);
+                throw error;
+            }
+        }
+
+        // Update progress bar based on current price vs pre price
+        function updateProgressBar(row, currentPrice, prePrice) {
+            const progressBar = row.querySelector('.progress-bar-fill');
+            if (!progressBar || !prePrice || prePrice <= 0) return;
+            
+            // Calculate percentage: (currentPrice / prePrice) * 100
+            const percentage = Math.min((currentPrice / prePrice) * 100, 100);
+            
+            // Update progress bar width
+            progressBar.style.width = percentage + '%';
+            
+            // Add class if over target
+            if (currentPrice >= prePrice) {
+                progressBar.classList.add('over-target');
+            } else {
+                progressBar.classList.remove('over-target');
+            }
+        }
+
+        // Update Pre % column to show percentage change needed from current price to reach pre price
+        function updatePrePercent(row, currentPrice, prePrice) {
+            const prePercentCell = row.querySelector('.pre-percent');
+            if (!prePercentCell || !prePrice || prePrice <= 0) return;
+            
+            if (!currentPrice || currentPrice <= 0) {
+                prePercentCell.textContent = 'Loading...';
+                return;
+            }
+            
+            // Calculate percentage change needed: ((Pre Price - Current Price) / Current Price) * 100
+            // This shows how much the current price needs to increase to reach the pre price
+            let percentageChange = ((prePrice - currentPrice) / currentPrice) * 100;
+            
+            // If current price exceeds pre price, show negative percentage (decrease needed)
+            if (percentageChange <= 0) {
+                prePercentCell.textContent = percentageChange.toFixed(1) + '%';
+                prePercentCell.classList.add('negative');
+                prePercentCell.classList.remove('positive');
+            } else {
+                prePercentCell.textContent = '+' + percentageChange.toFixed(1) + '%';
+                prePercentCell.classList.add('positive');
+                prePercentCell.classList.remove('negative');
+            }
+        }
+
+        // Update Crash % column to show percentage change needed from current price to reach crash price
+        function updateCrashPercent(ticker, currentPrice) {
+            // Find the corresponding row in the After table
+            const afterRow = document.querySelector(`#afterTable tbody tr[data-ticker="${ticker}"]`);
+            if (!afterRow) return;
+            
+            const crashPercentCell = afterRow.querySelector('.crash-percent');
+            const crashPrice = parseFloat(afterRow.getAttribute('data-crash-price'));
+            
+            if (!crashPercentCell || crashPrice === null || isNaN(crashPrice)) return;
+            
+            if (currentPrice === null || currentPrice === undefined) {
+                crashPercentCell.textContent = 'N/A';
+                return;
+            }
+            
+            if (currentPrice <= 0) {
+                crashPercentCell.textContent = 'Loading...';
+                return;
+            }
+            
+            // Handle special case where crash price is 0 (like XRP)
+            if (crashPrice === 0) {
+                crashPercentCell.textContent = '-100.0%';
+                crashPercentCell.classList.add('negative');
+                crashPercentCell.classList.remove('positive');
+                return;
+            }
+            
+            // Calculate percentage change needed: ((Crash Price - Current Price) / Current Price) * 100
+            // This will be negative since crash price is lower than current price
+            let percentageChange = ((crashPrice - currentPrice) / currentPrice) * 100;
+            
+            // Always negative (or zero) since crash price is lower
+            crashPercentCell.textContent = percentageChange.toFixed(1) + '%';
+            crashPercentCell.classList.add('negative');
+            crashPercentCell.classList.remove('positive');
+        }
+
+        // Update Target % column to show percentage change needed from crash price to reach target price
+        function updateTargetPercent(row) {
+            const targetPercentCell = row.querySelector('.target-percent');
+            const crashPrice = parseFloat(row.getAttribute('data-crash-price'));
+            const targetPrice = parseFloat(row.getAttribute('data-target-price'));
+            
+            if (!targetPercentCell || crashPrice === null || isNaN(crashPrice) || targetPrice === null || isNaN(targetPrice)) return;
+            
+            // Handle special case where crash price is 0 (like XRP)
+            // When going from $0 to target, we can't calculate a percentage, but we can show it as infinite or very large
+            if (crashPrice === 0) {
+                if (targetPrice > 0) {
+                    // Show as infinite percentage increase (∞) or a very large number
+                    targetPercentCell.textContent = '∞%';
+                    targetPercentCell.classList.add('positive');
+                    targetPercentCell.classList.remove('negative');
+                } else {
+                    targetPercentCell.textContent = 'N/A';
+                }
+                return;
+            }
+            
+            // Calculate percentage change needed: ((Target Price - Crash Price) / Crash Price) * 100
+            // This will be positive since target price is higher than crash price
+            let percentageChange = ((targetPrice - crashPrice) / crashPrice) * 100;
+            
+            // Always positive (or zero) since target price is higher
+            targetPercentCell.textContent = '+' + percentageChange.toFixed(1) + '%';
+            targetPercentCell.classList.add('positive');
+            targetPercentCell.classList.remove('negative');
+        }
+
+        // Initialize Target % for all rows in After table
+        function initializeTargetPercent() {
+            const afterRows = document.querySelectorAll('#afterTable tbody tr[data-ticker]');
+            afterRows.forEach(row => {
+                updateTargetPercent(row);
+            });
+        }
+
+        // Fetch and update prices for all tickers
+        async function fetchAllPrices() {
+            const rows = document.querySelectorAll('#beforeTable tbody tr[data-ticker]');
+            
+            for (const row of rows) {
+                const ticker = row.getAttribute('data-ticker');
+                const priceValueElement = row.querySelector('.price-value');
+                const prePrice = parseFloat(row.getAttribute('data-pre-price'));
+                
+                if (!ticker || !priceValueElement) continue;
+                
+                // Get primary symbol, with fallback alternatives for problematic tickers
+                const primarySymbol = tickerSymbolMap[ticker] || ticker;
+                const symbolAlternatives = {
+                    'XRP': ['XRP-USD', 'XRPUSD', 'XRP'],
+                    'BTC': ['BTC-USD', 'BTCUSD', 'BTC']
+                };
+                
+                const symbolsToTry = symbolAlternatives[ticker] || [primarySymbol];
+                
+                let priceData = null;
+                let lastError = null;
+                
+                // Try each symbol format
+                for (const symbol of symbolsToTry) {
+                    try {
+                        priceData = await fetchStockPrice(symbol);
+                        if (priceData && priceData.currentPrice && priceData.currentPrice > 0) {
+                            break; // Success, exit the loop
+                        }
+                    } catch (error) {
+                        console.warn(`Failed to fetch ${ticker} with symbol ${symbol}:`, error.message);
+                        lastError = error;
+                        priceData = null;
+                    }
+                }
+                
+                // Update the cell with the result
+                if (priceData && priceData.currentPrice) {
+                    const formattedPrice = '$' + priceData.currentPrice.toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    });
+                    priceValueElement.textContent = formattedPrice;
+                    
+                    // Update progress bar
+                    if (prePrice) {
+                        updateProgressBar(row, priceData.currentPrice, prePrice);
+                        updatePrePercent(row, priceData.currentPrice, prePrice);
+                    }
+                    
+                    // Update Crash % in After table
+                    updateCrashPercent(ticker, priceData.currentPrice);
+                } else {
+                    console.error(`Failed to fetch price for ${ticker} after trying all symbol formats:`, lastError);
+                    priceValueElement.textContent = 'N/A';
+                    // Update Pre % to show N/A as well
+                    const prePercentCell = row.querySelector('.pre-percent');
+                    if (prePercentCell) {
+                        prePercentCell.textContent = 'N/A';
+                    }
+                    // Update Crash % to show N/A as well
+                    updateCrashPercent(ticker, null);
+                }
+                
+                // Small delay to avoid rate limiting
+                await new Promise(resolve => setTimeout(resolve, 200));
+            }
+        }
+
+        // Load prices when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize Target % immediately (doesn't depend on current price)
+            initializeTargetPercent();
+            // Then fetch current prices
+            fetchAllPrices();
+        });
+    </script>
+</body>
+</html>
+

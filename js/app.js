@@ -7,8 +7,9 @@
 const STORAGE_KEY = "updown.app.v2";
 const LEGACY_KEY = "updown.addresses.v1";
 const SNAPSHOT_KEY = "updown.market.v1";
-const PRICE_HISTORY_MS = 24 * 3600 * 1000;
-const PRICE_HISTORY_MAX = 120;
+const PRICE_HISTORY_MS = 7 * 24 * 3600 * 1000;
+/** Cap samples per asset (~2/hour across 7 days) so refreshes alone can fill the omen. */
+const PRICE_HISTORY_MAX = 336;
 const NIGHT_POLICY_ID = "0691b2fecca1ac4f53cb6dfb00b7013e561d1f34403b957cbb5af1fa";
 const NIGHT_ASSET_NAME = "4e49474854";
 
@@ -345,6 +346,8 @@ let store = loadStore();
 let manualPriceDirty = false;
 /** Last coinId we prefilled price for (reset dirty on coin change). */
 let manualPriceCoinId = null;
+/** Manual lot id being edited in the asset form, or null when adding. */
+let editingManualId = null;
 
 /** @type {Record<string, { usd: number, change24h: number }>} */
 let prices = {};
@@ -354,7 +357,7 @@ let freshQuoteIds = new Set(["cash"]);
 const quotingIds = new Set();
 
 /** Selected dashboard chart range label. */
-let chartRange = "1";
+let chartRange = "7";
 
 /** Last holdings used for the chart (for retry reloads). */
 let lastChartHoldings = [];
@@ -365,13 +368,14 @@ let lastChartHoldings = [];
  */
 let balanceCache = {};
 
-/** Home pager: 0 wizard · 1 hoard (default) · 2 the reckoning. Swipe right from the hoard for the wizard. */
-const HOME_SLIDE_WIZARD = 0;
-const HOME_SLIDE_HOARD = 1;
-const HOME_SLIDE_PL = 2;
-const HOME_SLIDE_CRYSTAL = 3;
-const HOME_SLIDE_FUTURE_WIZARD = 4;
-const HOME_SLIDE_MAX = 4;
+/** Home pager: 0 buy/sell · 1 wizard · 2 hoard (default) · 3 reckoning · 4 crystal · 5 future wizard. */
+const HOME_SLIDE_BUYSELL = 0;
+const HOME_SLIDE_WIZARD = 1;
+const HOME_SLIDE_HOARD = 2;
+const HOME_SLIDE_PL = 3;
+const HOME_SLIDE_CRYSTAL = 4;
+const HOME_SLIDE_FUTURE_WIZARD = 5;
+const HOME_SLIDE_MAX = 5;
 let homeSlide = HOME_SLIDE_HOARD;
 
 const hoardSort = { key: "value", dir: "desc" };
@@ -467,9 +471,21 @@ function anyBalancesLoading() {
 }
 
 function updateGlobalSpinner() {
-  // Top-right spinner removed; keep body flag for any CSS that still keys off it.
   const busy = refreshInFlight || anyBalancesLoading();
   document.body.classList.toggle("is-data-loading", busy);
+  const refreshBtn = document.getElementById("btn-refresh");
+  const stormHost = document.getElementById("refresh-storm-host");
+  if (refreshBtn) {
+    const storming = !!refreshInFlight;
+    refreshBtn.classList.toggle("is-refreshing", storming);
+    refreshBtn.disabled = storming;
+    refreshBtn.setAttribute("aria-busy", storming ? "true" : "false");
+    // Same quote-loading + storm markup/sizing as asset icons
+    if (stormHost) {
+      stormHost.classList.toggle("quote-loading", storming);
+      syncQuoteStorm(stormHost, storming);
+    }
+  }
 }
 
 /** Navigation stack state */
@@ -714,13 +730,15 @@ function setAssetRisk(id, raw) {
   return n;
 }
 
-/** Unique stocks, coins, and metals the wizard actually holds. */
-function heldAssetsForRisk() {
+/** Unique held relics for Risk / Future lists. Cash is included for Risk. */
+function heldAssetsForRisk({ includeCash = false } = {}) {
   const seen = new Set();
   const out = [];
   for (const pf of store.portfolios || []) {
     for (const coin of allAssets()) {
-      if (!coin || coin.kind === "cash" || coin.id === "cash") continue;
+      if (!coin) continue;
+      const isCash = coin.kind === "cash" || coin.id === "cash";
+      if (isCash && !includeCash) continue;
       if (!portfolioHasCoin(pf, coin.id) || seen.has(coin.id)) continue;
       seen.add(coin.id);
       out.push(coin);
@@ -862,7 +880,7 @@ function prunePriceHistoryForQuota() {
       delete store.priceHistory[id];
       continue;
     }
-    store.priceHistory[id] = pts.slice(-24);
+    store.priceHistory[id] = pts.slice(-Math.min(72, PRICE_HISTORY_MAX));
   }
 }
 
@@ -1136,6 +1154,47 @@ function isQuoteLoading(id) {
   return !!id && quotingIds.has(id);
 }
 
+function quoteStormHtml() {
+  return `<span class="quote-storm" aria-hidden="true"><svg class="quote-storm-svg" viewBox="0 0 48 48" focusable="false">
+    <g class="bolts">
+      <path class="bolt b1" d="M24 2.2 26.4 8.4l-3.6.8 5.2 8.2"/>
+      <path class="bolt b1 core" d="M24 2.2 26.4 8.4l-3.6.8 5.2 8.2"/>
+      <path class="bolt b2" d="M42.2 13.8 36.8 17l2.4 2.8-7 4.6"/>
+      <path class="bolt b2 core" d="M42.2 13.8 36.8 17l2.4 2.8-7 4.6"/>
+      <path class="bolt b3" d="M43.2 34.2 36.6 33l1.2 3.4-8.4 2.2"/>
+      <path class="bolt b3 core" d="M43.2 34.2 36.6 33l1.2 3.4-8.4 2.2"/>
+      <path class="bolt b4" d="M30.4 45.2 28.2 38.8l3.2-.4-4.4-8"/>
+      <path class="bolt b4 core" d="M30.4 45.2 28.2 38.8l3.2-.4-4.4-8"/>
+      <path class="bolt b5" d="M15.2 45.4 17.8 39l-3.2-.6 4.8-8.2"/>
+      <path class="bolt b5 core" d="M15.2 45.4 17.8 39l-3.2-.6 4.8-8.2"/>
+      <path class="bolt b6" d="M4.6 33.8 11.2 32.4l-1.4 3.2 8.6 2.6"/>
+      <path class="bolt b6 core" d="M4.6 33.8 11.2 32.4l-1.4 3.2 8.6 2.6"/>
+      <path class="bolt b7" d="M5 14.4 10.6 17.4 8.2 20l7.2 4.2"/>
+      <path class="bolt b7 core" d="M5 14.4 10.6 17.4 8.2 20l7.2 4.2"/>
+      <path class="bolt b8" d="M18.2 2.6 20.8 9l-3.4.2 4.6 8.4"/>
+      <path class="bolt b8 core" d="M18.2 2.6 20.8 9l-3.4.2 4.6 8.4"/>
+    </g>
+    <g class="sparks">
+      <circle class="spark s1" cx="24" cy="1.6" r="1.15"/>
+      <circle class="spark s2" cx="44.6" cy="17" r="1"/>
+      <circle class="spark s3" cx="40.8" cy="39.2" r="1.1"/>
+      <circle class="spark s4" cx="24" cy="46.4" r="1"/>
+      <circle class="spark s5" cx="7.2" cy="39" r="1.05"/>
+      <circle class="spark s6" cx="3.6" cy="16.8" r="1.1"/>
+    </g>
+  </svg></span>`;
+}
+
+function syncQuoteStorm(el, on) {
+  if (!el) return;
+  let storm = el.querySelector(".quote-storm");
+  if (on) {
+    if (!storm) el.insertAdjacentHTML("beforeend", quoteStormHtml());
+  } else if (storm) {
+    storm.remove();
+  }
+}
+
 function paintAvatarQuoteState(id) {
   if (!id) return;
   const loading = isQuoteLoading(id);
@@ -1143,18 +1202,20 @@ function paintAvatarQuoteState(id) {
   document.querySelectorAll(`[data-open-tv="${CSS.escape(id)}"]`).forEach((el) => {
     el.classList.toggle("quote-loading", loading);
     el.classList.toggle("stale-quote", !loading && stale);
+    syncQuoteStorm(el, loading);
   });
 }
 
 function coinAvatarHtml(coin, { lg = false } = {}) {
-  const loading = isQuoteLoading(coin?.id) ? " quote-loading" : "";
-  const stale = !loading && isQuoteStale(coin?.id) ? " stale-quote" : "";
-  const cls = `${lg ? "coin-avatar lg" : "coin-avatar"}${stale}${loading}`;
+  const loading = isQuoteLoading(coin?.id);
+  const stale = !loading && isQuoteStale(coin?.id);
+  const cls = `${lg ? "coin-avatar lg" : "coin-avatar"}${stale ? " stale-quote" : ""}${loading ? " quote-loading" : ""}`;
   const bg = coin?.color || "#d4af37";
   const fg = iconContrast(bg);
   const id = coin?.id || "";
   const label = `Open ${coin?.symbol || "asset"} chart`;
-  return `<span class="${cls}" style="background:${bg};color:${fg}" data-open-tv="${escapeHtml(id)}" role="button" tabindex="0" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">${escapeHtml((coin?.symbol || "?").slice(0, 4))}</span>`;
+  const storm = loading ? quoteStormHtml() : "";
+  return `<span class="${cls}" style="background:${bg};color:${fg}" data-open-tv="${escapeHtml(id)}" role="button" tabindex="0" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"><span class="coin-avatar-sym">${escapeHtml((coin?.symbol || "?").slice(0, 4))}</span>${storm}</span>`;
 }
 
 /** Fill an existing avatar element with brand color + symbol. */
@@ -1162,17 +1223,25 @@ function setCoinAvatarEl(el, coin) {
   if (!el || !coin) return;
   el.classList.add("coin-avatar");
   el.classList.remove("has-logo", "logo-fill");
-  el.innerHTML = "";
   el.style.background = coin.color || "#d4af37";
   el.style.color = iconContrast(coin.color || "#d4af37");
-  el.textContent = coin.symbol.slice(0, 4);
   el.dataset.openTv = coin.id;
   el.setAttribute("role", "button");
   el.setAttribute("tabindex", "0");
   el.setAttribute("aria-label", `Open ${coin.symbol} chart`);
   el.title = `Open ${coin.symbol} chart`;
-  el.classList.toggle("quote-loading", isQuoteLoading(coin.id));
+  const loading = isQuoteLoading(coin.id);
+  el.classList.toggle("quote-loading", loading);
   el.classList.toggle("stale-quote", isQuoteStale(coin.id));
+  let sym = el.querySelector(".coin-avatar-sym");
+  if (!sym) {
+    el.innerHTML = "";
+    sym = document.createElement("span");
+    sym.className = "coin-avatar-sym";
+    el.appendChild(sym);
+  }
+  sym.textContent = coin.symbol.slice(0, 4);
+  syncQuoteStorm(el, loading);
 }
 
 const TV_CRYPTO_SYMBOLS = {
@@ -1415,7 +1484,7 @@ function isHeldAsset(id) {
   return false;
 }
 
-/** Append a live quote to the 24h history used by the hall chart. */
+/** Append a live quote from a refresh to the 7-day history used by the hall chart. */
 function recordPriceHistory(id, usd) {
   if (!id || id === "cash" || !isHeldAsset(id)) return false;
   const px = Number(usd);
@@ -1426,7 +1495,7 @@ function recordPriceHistory(id, usd) {
   let pts = Array.isArray(store.priceHistory[id]) ? store.priceHistory[id] : [];
   pts = pts.filter((p) => Number.isFinite(p?.t) && Number.isFinite(p?.usd) && p.t >= since);
   const last = pts[pts.length - 1];
-  // Skip near-duplicate ticks to keep storage lean
+  // Skip near-duplicate ticks to keep storage lean (refresh button / boot only)
   if (last && now - last.t < 20_000 && Math.abs(last.usd - px) < 1e-12) return false;
   pts.push({ t: now, usd: px });
   if (pts.length > PRICE_HISTORY_MAX) pts = pts.slice(-PRICE_HISTORY_MAX);
@@ -1729,14 +1798,8 @@ async function refreshAssetQuote(id) {
   quotingIds.add(id);
   paintAvatarQuoteState(id);
   try {
-    let q = null;
-    if (asset.yahooSymbol && (asset.kind === "stock" || asset.kind === "metal" || !asset.geckoId)) {
-      q = await fetchStockQuote(asset.yahooSymbol);
-    }
-    if (!q && asset.geckoId) {
-      q = await fetchCryptoQuote(asset);
-    }
-    if (q && Number.isFinite(q.usd)) {
+    const q = await fetchAssetQuote(asset);
+    if (q) {
       prices[id] = q;
       freshQuoteIds.add(id);
       rememberQuotes({ [id]: q });
@@ -1759,12 +1822,6 @@ function openAssetChart(id) {
   if (!id || !getAsset(id)) return;
   showView("tv", { coinId: id });
   refreshAssetQuote(id);
-}
-
-function chunk(arr, size) {
-  const out = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
 }
 
 const GECKO_TO_COINCAP = {
@@ -1807,86 +1864,32 @@ async function fetchGeckoMarkets(ids, ticker = null) {
   return null;
 }
 
-async function fetchCoinCapPrices(next, cryptos) {
-  const ids = [
-    ...new Set(
-      cryptos.map((c) => GECKO_TO_COINCAP[c.geckoId] || null).filter(Boolean)
-    ),
-  ];
-  if (!ids.length) return;
-  const label = tickerLabelForAssets(cryptos);
-  try {
-    const data = await fetchJsonRaw(
-      `https://api.coincap.io/v2/assets?ids=${encodeURIComponent(ids.join(","))}`,
-      {},
-      10000,
-      label
-    );
-    const rows = data?.data;
-    if (!Array.isArray(rows)) return;
-    const byCap = Object.fromEntries(rows.map((r) => [r.id, r]));
-    for (const coin of cryptos) {
-      const capId = GECKO_TO_COINCAP[coin.geckoId];
-      const row = capId && byCap[capId];
-      if (!row) continue;
-      const usd = Number(row.priceUsd);
-      if (!Number.isFinite(usd)) continue;
-      next[coin.id] = {
-        usd,
-        change24h: Number(row.changePercent24Hr) || 0,
-      };
-      freshQuoteIds.add(coin.id);
-    }
-  } catch {
-    /* keep last quotes */
-  }
+/** Held relics that need a live quote, in list order. */
+function quoteRefreshAssets() {
+  return allAssets().filter(
+    (a) =>
+      a &&
+      a.id !== "cash" &&
+      a.kind !== "cash" &&
+      isHeldAsset(a.id) &&
+      (a.geckoId || a.yahooSymbol)
+  );
 }
 
-async function fetchCryptoPrices(next) {
-  const cryptos = allAssets().filter((a) => a.geckoId);
-  if (!cryptos.length) return;
-  const ids = [...new Set(cryptos.map((c) => c.geckoId))];
-  let gotGecko = false;
-  for (const group of chunk(ids, 50)) {
-    const groupAssets = cryptos.filter((c) => group.includes(c.geckoId));
-    const rows = await fetchGeckoMarkets(group, tickerLabelForAssets(groupAssets));
-    if (!rows) continue;
-    gotGecko = true;
-    const byGecko = Object.fromEntries(rows.map((r) => [r.id, r]));
-    for (const coin of cryptos) {
-      const row = byGecko[coin.geckoId];
-      if (!row) continue;
-      const usd = Number(row.current_price);
-      if (Number.isFinite(usd)) {
-        next[coin.id] = {
-          usd,
-          change24h: Number(row.price_change_percentage_24h) || 0,
-        };
-        freshQuoteIds.add(coin.id);
-      }
-    }
+/** Fetch one relic's live quote (crypto, stock, or metal). */
+async function fetchAssetQuote(asset) {
+  if (!asset || asset.id === "cash" || asset.kind === "cash") return null;
+  let q = null;
+  if (asset.yahooSymbol && (asset.kind === "stock" || asset.kind === "metal" || !asset.geckoId)) {
+    q = await fetchStockQuote(asset.yahooSymbol);
   }
-  if (!gotGecko) await fetchCoinCapPrices(next, cryptos);
+  if (!q && asset.geckoId) {
+    q = await fetchCryptoQuote(asset);
+  }
+  return q && Number.isFinite(q.usd) ? q : null;
 }
 
-async function fetchQuotedAssetPrices(next) {
-  const quoted = allAssets().filter((a) => a.yahooSymbol && !a.geckoId);
-  if (!quoted.length) return;
-  // One stock/metal quote at a time to avoid stampedes and rate limits.
-  for (const asset of quoted) {
-    try {
-      const q = await fetchStockQuote(asset.yahooSymbol);
-      if (q) {
-        next[asset.id] = q;
-        prices[asset.id] = q;
-        freshQuoteIds.add(asset.id);
-      }
-    } catch {
-      /* keep last quote */
-    }
-  }
-}
-
+/** Refresh prices one held relic at a time (API calls are sequential). */
 async function fetchPrices() {
   freshQuoteIds = new Set(["cash"]);
   const next = { ...prices };
@@ -1896,8 +1899,22 @@ async function fetchPrices() {
     if (q && Number.isFinite(q.usd) && !next[id]) next[id] = q;
   }
 
-  await fetchCryptoPrices(next);
-  await fetchQuotedAssetPrices(next);
+  for (const asset of quoteRefreshAssets()) {
+    try {
+      const q = await fetchAssetQuote(asset);
+      if (q) {
+        next[asset.id] = q;
+        prices[asset.id] = q;
+        freshQuoteIds.add(asset.id);
+      }
+    } catch {
+      /* keep last quote */
+    } finally {
+      // Clear lightning / rings on this relic as soon as its API call finishes
+      quotingIds.delete(asset.id);
+      paintAvatarQuoteState(asset.id);
+    }
+  }
 
   prices = next;
   rememberQuotes(next);
@@ -1905,11 +1922,11 @@ async function fetchPrices() {
 }
 
 const CHART_RANGES = {
-  "1": { label: "24H", days: "1", spanMs: 24 * 3600 * 1000 },
+  "7": { label: "7D", days: "7", spanMs: PRICE_HISTORY_MS },
 };
 
 function rangeSpanMs(days) {
-  return CHART_RANGES[days]?.spanMs ?? 24 * 3600 * 1000;
+  return CHART_RANGES[days]?.spanMs ?? PRICE_HISTORY_MS;
 }
 
 function historyPointsFor(coinId) {
@@ -1997,7 +2014,7 @@ function buildPortfolioSeries(holdings) {
 }
 
 /**
- * Draw an area chart into an SVG element.
+ * Draw an area chart into an SVG element across the 7-day refresh window.
  * @param {SVGElement} svg
  * @param {{ t: number, v: number }[]} series
  */
@@ -2029,19 +2046,22 @@ function renderSparkline(svg, series) {
   const stroke = up ? "#7dba5a" : "#d4543c";
   const fillId = `chartFill_${svg.id || "main"}`;
 
-  const xAt = (i) => padX + (i / (series.length - 1)) * (W - padX * 2);
+  const tEnd = Math.max(series[series.length - 1].t, Date.now());
+  const tStart = tEnd - PRICE_HISTORY_MS;
+  const span = Math.max(1, tEnd - tStart);
+  const xAtT = (t) => padX + ((Math.min(tEnd, Math.max(tStart, t)) - tStart) / span) * (W - padX * 2);
   const yAt = (v) => padY + (1 - (v - min) / (max - min)) * (H - padY * 2);
 
   let line = "";
   for (let i = 0; i < series.length; i++) {
-    const x = xAt(i);
+    const x = xAtT(series[i].t);
     const y = yAt(series[i].v);
     line += i === 0 ? `M ${x.toFixed(2)} ${y.toFixed(2)}` : ` L ${x.toFixed(2)} ${y.toFixed(2)}`;
   }
   const yBase = H;
   const area =
     line +
-    ` L ${xAt(series.length - 1).toFixed(2)} ${yBase} L ${xAt(0).toFixed(2)} ${yBase} Z`;
+    ` L ${xAtT(series[series.length - 1].t).toFixed(2)} ${yBase} L ${xAtT(series[0].t).toFixed(2)} ${yBase} Z`;
 
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.innerHTML = `
@@ -2083,7 +2103,7 @@ function setChartOverlay(state, message) {
   if (status) status.textContent = message || "";
 }
 
-/** Paint the hall 24h chart from stored live quotes only. */
+/** Paint the hall 7-day chart from refresh-stored prices only (no chart API). */
 function updateHomeChart(allocRows, { force } = {}) {
   const svg = document.getElementById("home-chart");
   if (!svg) return;
@@ -2111,8 +2131,8 @@ function updateHomeChart(allocRows, { force } = {}) {
     setChartOverlay(
       "empty",
       failed === holdings.length
-        ? "Scry the markets — the omen needs stored prices"
-        : "Need more readings — scry again to fill the omen"
+        ? "Refresh to store prices — the 7-day omen needs readings"
+        : "Need more refreshes — keep storing prices to fill 7 days"
     );
     return;
   }
@@ -2416,17 +2436,24 @@ async function runPool(fns, concurrency = 4) {
 
 let refreshInFlight = false;
 
-async function refreshAll({ fromPull } = {}) {
+function setQuotingIds(ids, on) {
+  for (const id of ids) {
+    if (on) quotingIds.add(id);
+    else quotingIds.delete(id);
+  }
+}
+
+async function refreshAll() {
   if (refreshInFlight) return;
   refreshInFlight = true;
   updateGlobalSpinner();
-
-  if (fromPull) {
-    setPtrOffset(PTR.holdOffset, { mode: "refreshing" });
-  }
+  const quoting = quoteRefreshAssets().map((a) => a.id);
+  setQuotingIds(quoting, true);
+  render();
 
   try {
     try {
+      // Prices: one held relic at a time (see fetchPrices).
       await fetchPrices();
       // Re-render with new prices while balances still show last known values
       render();
@@ -2452,283 +2479,17 @@ async function refreshAll({ fromPull } = {}) {
     updateGlobalSpinner();
     if (jobs.length) {
       render(); // loading flags on, values still from last snapshot
-      await runPool(jobs, 4);
+      await runPool(jobs, 1);
     }
 
     saveMarketSnapshot();
-    render();
     toast("Updated", "success");
   } finally {
+    setQuotingIds(quoting, false);
     refreshInFlight = false;
     updateGlobalSpinner();
-    // Always fully settle PTR so the screen never stays half-scrolled
-    resetPtrVisual({ animate: fromPull });
+    render();
   }
-}
-
-// ── Pull to refresh (CMC-style) ────────────────────────────────────────────
-// Scroll is the default. PTR only engages when:
-//   1) content is already at the top, AND
-//   2) the finger pulls DOWN past an activation dead-zone.
-// Normal scroll (finger up / content move) is never stolen.
-
-const PTR = {
-  /** Finger must pull this far past top before we claim the gesture (px). */
-  activateAt: 18,
-  /** Finger pull distance to arm refresh on release (px). */
-  threshold: 90,
-  /** Visual hold while refreshing (px). */
-  holdOffset: 52,
-  /** Max visual pull (px). */
-  maxVisual: 120,
-  startY: 0,
-  startX: 0,
-  /** Touch began at top of list — candidate for PTR. */
-  canPull: false,
-  /** We've claimed this gesture (preventDefault + rubber band). */
-  active: false,
-  armed: false,
-  distance: 0,
-  offset: 0,
-};
-
-function getViewsEl() {
-  return document.getElementById("views");
-}
-
-function isAtScrollTop(el) {
-  // Allow 1px of iOS subpixel / bounce noise
-  return !!el && el.scrollTop <= 1;
-}
-
-/** Rubber-band visual distance from finger travel (diminishing). */
-function ptrVisualFromPull(pullPx) {
-  if (pullPx <= 0) return 0;
-  // Soft spring: never jumps to max instantly
-  const v = PTR.maxVisual * (1 - Math.exp(-pullPx / 95));
-  return Math.min(PTR.maxVisual, v);
-}
-
-function setPtrCssOffset(px) {
-  const views = getViewsEl();
-  const val = `${Math.max(0, px || 0)}px`;
-  document.documentElement.style.setProperty("--ptr-offset", val);
-  if (views) views.style.setProperty("--ptr-offset", val);
-}
-
-function setPtrOffset(px, { mode } = {}) {
-  const ptr = document.getElementById("ptr-indicator");
-  const ptrIcon = document.getElementById("ptr-icon");
-  const ptrLabel = document.getElementById("ptr-label");
-  if (!ptr) return;
-
-  const offset = Math.max(0, px || 0);
-  PTR.offset = offset;
-  setPtrCssOffset(offset);
-
-  const show = offset > 1 || mode === "refreshing";
-  ptr.classList.toggle("visible", show);
-  ptr.classList.toggle("refreshing", mode === "refreshing");
-  ptr.setAttribute("aria-hidden", show ? "false" : "true");
-
-  if (mode === "refreshing") {
-    ptr.classList.remove("armed");
-    PTR.armed = false;
-    if (ptrIcon) ptrIcon.textContent = "↻";
-    if (ptrLabel) ptrLabel.textContent = "Scrying…";
-    return;
-  }
-
-  PTR.armed = PTR.distance >= PTR.threshold;
-  ptr.classList.toggle("armed", PTR.armed && !refreshInFlight);
-
-  if (!refreshInFlight) {
-    if (ptrIcon) ptrIcon.textContent = "↓";
-    if (ptrLabel) {
-      ptrLabel.textContent = PTR.armed ? "Release to scry" : "Scry the markets";
-    }
-  }
-}
-
-function clearPtrStateFlags() {
-  PTR.canPull = false;
-  PTR.active = false;
-  PTR.armed = false;
-  PTR.distance = 0;
-}
-
-function resetPtrVisual({ animate } = {}) {
-  const views = getViewsEl();
-  const ptr = document.getElementById("ptr-indicator");
-  const current = PTR.offset || 0;
-
-  clearPtrStateFlags();
-  PTR.offset = 0;
-
-  const finishClear = () => {
-    if (views) {
-      views.classList.remove("ptr-animating", "ptr-active");
-      views.style.transform = "";
-      views.style.removeProperty("--ptr-offset");
-      // Hard-settle scroll if iOS left a rubber-band
-      if (views.scrollTop < 0) views.scrollTop = 0;
-    }
-    document.documentElement.style.removeProperty("--ptr-offset");
-    if (ptr) {
-      ptr.classList.remove("visible", "armed", "refreshing");
-      ptr.style.transform = "";
-      ptr.setAttribute("aria-hidden", "true");
-      const ptrIcon = document.getElementById("ptr-icon");
-      const ptrLabel = document.getElementById("ptr-label");
-      if (ptrIcon) ptrIcon.textContent = "↓";
-      if (ptrLabel) ptrLabel.textContent = "Scry the markets";
-    }
-  };
-
-  if (animate && current > 1) {
-    if (views) views.classList.add("ptr-animating");
-    setPtrCssOffset(current);
-    void (views && views.offsetHeight);
-    setPtrCssOffset(0);
-    let done = false;
-    const onEnd = () => {
-      if (done) return;
-      done = true;
-      finishClear();
-    };
-    if (views) views.addEventListener("transitionend", onEnd, { once: true });
-    setTimeout(onEnd, 280);
-  } else {
-    finishClear();
-  }
-}
-
-function abandonPullGesture() {
-  if (PTR.active || PTR.offset > 0) {
-    resetPtrVisual({ animate: false });
-  } else {
-    clearPtrStateFlags();
-  }
-}
-
-function wirePullToRefresh() {
-  const views = getViewsEl();
-  if (!views) return;
-
-  views.addEventListener(
-    "touchstart",
-    (e) => {
-      if (refreshInFlight) {
-        abandonPullGesture();
-        return;
-      }
-      const t = e.touches[0];
-      const p = toPortraitPoint(t.clientX, t.clientY);
-      PTR.startY = p.y;
-      PTR.startX = p.x;
-      PTR.distance = 0;
-      PTR.armed = false;
-      PTR.active = false;
-      // Only candidates at the very top — otherwise pure scroll
-      PTR.canPull = isAtScrollTop(views);
-      if (!PTR.canPull) PTR.offset = 0;
-    },
-    { passive: true }
-  );
-
-  views.addEventListener(
-    "touchmove",
-    (e) => {
-      if (!PTR.canPull || refreshInFlight) return;
-
-      const t = e.touches[0];
-      const p = toPortraitPoint(t.clientX, t.clientY);
-      const dy = p.y - PTR.startY; // >0 = finger down = overscroll at top
-      const dx = p.x - PTR.startX;
-
-      // Already scrolled away before we claimed the gesture → pure scroll
-      if (!PTR.active && !isAtScrollTop(views)) {
-        PTR.canPull = false;
-        return;
-      }
-
-      // Horizontal pan — don't steal
-      if (!PTR.active && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.1) {
-        PTR.canPull = false;
-        return;
-      }
-
-      // Finger moving up (content scrolls down the list) — never PTR
-      if (dy <= 0) {
-        if (PTR.active) {
-          // User reversed; drop pull visual and release claim so scroll can resume
-          setPtrOffset(0);
-          PTR.active = false;
-          PTR.distance = 0;
-          PTR.armed = false;
-          views.classList.remove("ptr-active");
-        }
-        return;
-      }
-
-      // Still in dead-zone: allow browser/native scroll handling, don't preventDefault
-      if (!PTR.active) {
-        if (dy < PTR.activateAt) return;
-        // Activate only if still glued to the top
-        if (!isAtScrollTop(views)) {
-          PTR.canPull = false;
-          return;
-        }
-        PTR.active = true;
-        views.classList.add("ptr-active");
-      }
-
-      // Claimed pull: block scroll rubber-band, show PTR UI
-      if (e.cancelable) e.preventDefault();
-
-      // Distance past activation (pulling "way down")
-      PTR.distance = dy;
-      const visual = ptrVisualFromPull(Math.max(0, dy - PTR.activateAt * 0.35));
-      setPtrOffset(visual);
-    },
-    { passive: false }
-  );
-
-  const endPull = () => {
-    if (!PTR.canPull && !PTR.active) return;
-
-    const shouldRefresh = PTR.active && PTR.armed && !refreshInFlight;
-    views.classList.remove("ptr-active");
-
-    if (shouldRefresh) {
-      PTR.canPull = false;
-      PTR.active = false;
-      setPtrOffset(PTR.holdOffset, { mode: "refreshing" });
-      refreshAll({ fromPull: true });
-      return;
-    }
-
-    // Snap back; normal scroll was never blocked unless we had activated
-    if (PTR.active || PTR.offset > 0) {
-      resetPtrVisual({ animate: true });
-    } else {
-      clearPtrStateFlags();
-    }
-  };
-
-  views.addEventListener("touchend", endPull, { passive: true });
-  views.addEventListener("touchcancel", endPull, { passive: true });
-
-  // If the user scrolls with wheel/trackpad, never leave a stuck pull
-  views.addEventListener(
-    "scroll",
-    () => {
-      if (!PTR.active && !isAtScrollTop(views) && PTR.canPull) {
-        PTR.canPull = false;
-      }
-    },
-    { passive: true }
-  );
 }
 
 // ── UI helpers ─────────────────────────────────────────────────────────────
@@ -2785,6 +2546,7 @@ function render() {
 
   const back = document.getElementById("btn-back");
   const settingsBtn = document.getElementById("btn-settings");
+  const refreshBtn = document.getElementById("btn-refresh");
   const brand = document.getElementById("topbar-brand");
   const title = document.getElementById("topbar-title");
   const switchBtn = document.getElementById("btn-portfolio-switch");
@@ -2794,6 +2556,7 @@ function render() {
   const isHome = nav.view === "home";
   if (settingsBtn) settingsBtn.hidden = !isHome;
   if (back) back.hidden = isHome;
+  if (refreshBtn) refreshBtn.hidden = !isHome;
 
   // Portfolio switch sits far right of the header (not under the brand)
   const showPfSwitch =
@@ -2805,7 +2568,10 @@ function render() {
       document.getElementById("active-portfolio-label").textContent = pf?.name || "Portfolio";
     }
   }
-  if (topbarRight) topbarRight.classList.toggle("has-switch", showPfSwitch);
+  if (topbarRight) {
+    topbarRight.classList.toggle("has-switch", showPfSwitch);
+    topbarRight.classList.toggle("has-refresh", isHome);
+  }
 
   // Center: Wizard Portfolio brand on home/portfolio; page title elsewhere
   if (nav.view === "home") {
@@ -2837,11 +2603,6 @@ function render() {
     title.hidden = false;
     title.textContent = "Risk";
     renderRisk();
-  } else if (nav.view === "future") {
-    if (brand) brand.hidden = true;
-    title.hidden = false;
-    title.textContent = "Future";
-    renderFuture();
   } else if (nav.view === "tv") {
     if (brand) brand.hidden = true;
     title.hidden = false;
@@ -2971,6 +2732,7 @@ function renderHome() {
   paintSortHeader("home-holdings-header", hoardSort);
   if (!rows.length) {
     empty.hidden = false;
+    renderBuySell();
     renderWizardHud();
     renderFutureWizardHud();
     renderHomePl();
@@ -3020,10 +2782,203 @@ function renderHome() {
     list.appendChild(row);
   }
 
+  renderBuySell();
   renderWizardHud();
   renderFutureWizardHud();
   renderHomePl();
   renderCrystalBall();
+}
+
+// ── Buy / Sell calculator (digit-sum-8 offsets from WizardPortfolio_old) ──
+
+function calculateDigitSum(number) {
+  let sum = 0;
+  let num = Math.abs(Math.trunc(Number(number) || 0));
+  while (num > 0) {
+    sum += num % 10;
+    num = Math.floor(num / 10);
+  }
+  return sum;
+}
+
+function reduceToSingleDigit(number) {
+  let sum = calculateDigitSum(number);
+  while (sum >= 10) sum = calculateDigitSum(sum);
+  return sum;
+}
+
+/** Offset so Owned + Buy Shares reduces to digit sum 8. */
+function findBuyOffsetForDigitSum8(ownedShares, newShares) {
+  for (let offset = 0; offset >= -1000; offset--) {
+    const buyShares = Math.floor(newShares + offset);
+    if (buyShares <= 0) continue;
+    const offsetTotal = ownedShares + buyShares;
+    if (offsetTotal > 0 && reduceToSingleDigit(offsetTotal) === 8) return offset;
+  }
+  return 0;
+}
+
+/** Offset so Remaining Shares after sell reduces to digit sum 8. */
+function findSellOffsetForDigitSum8(ownedShares, afterSell) {
+  for (let offset = 0; offset >= -1000; offset--) {
+    const sellShares = Math.floor(afterSell + offset);
+    if (sellShares <= 0) continue;
+    const remainingShares = ownedShares - sellShares;
+    if (remainingShares > 0 && reduceToSingleDigit(remainingShares) === 8) return offset;
+  }
+  return 0;
+}
+
+function parseBuySellNumber(raw) {
+  const n = Number(String(raw ?? "").replace(/,/g, "").trim());
+  return Number.isFinite(n) ? n : 0;
+}
+
+function findAssetByTicker(ticker) {
+  const t = String(ticker || "").trim().toUpperCase();
+  if (!t) return null;
+  return (
+    allAssets().find(
+      (a) =>
+        String(a.symbol || "").toUpperCase() === t ||
+        String(a.yahooSymbol || "").toUpperCase() === t
+    ) || null
+  );
+}
+
+/** Total held quantity for a relic across portfolios included in the hall total. */
+function heldBalanceForAsset(assetId) {
+  if (!assetId) return 0;
+  let total = 0;
+  for (const pf of store.portfolios || []) {
+    if (!isIncludedInTotal(pf)) continue;
+    const info = coinBalanceInPortfolio(pf, assetId);
+    if (info.hasData) total += info.balance;
+  }
+  return total;
+}
+
+function heldCashUsd() {
+  return heldBalanceForAsset("cash");
+}
+
+function setText(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
+function calculateBuy() {
+  const cash1 = parseBuySellNumber(document.getElementById("buy-cash1")?.value);
+  const cash2 = parseBuySellNumber(document.getElementById("buy-cash2")?.value);
+  const price = parseBuySellNumber(document.getElementById("buy-price")?.value);
+  const ownedShares = Math.trunc(parseBuySellNumber(document.getElementById("buy-owned")?.value));
+
+  const totalMoney = cash1 + cash2;
+  setText("buy-total-money", formatUsd(totalMoney));
+
+  const newShares = price > 0 ? Math.floor(totalMoney / price) : 0;
+  setText("buy-new-shares", String(newShares));
+  setText("buy-total-shares", String(ownedShares + newShares));
+
+  const shareOffset = findBuyOffsetForDigitSum8(ownedShares, newShares);
+  setText("buy-share-offset", String(shareOffset));
+
+  const buyShares = Math.floor(newShares + shareOffset);
+  setText("buy-shares", String(buyShares));
+
+  const offsetTotal = Math.floor(ownedShares + buyShares);
+  setText("buy-offset-total", String(offsetTotal));
+
+  const cost = buyShares * price;
+  setText("buy-cost", formatUsd(cost));
+  setText("buy-money-left", formatUsd(totalMoney - cost));
+}
+
+function calculateSell() {
+  const sellPercent = parseBuySellNumber(document.getElementById("sell-percent")?.value);
+  const ownedShares = Math.trunc(parseBuySellNumber(document.getElementById("sell-owned")?.value));
+  const price = parseBuySellNumber(document.getElementById("sell-price")?.value);
+
+  const afterSell = Math.floor((sellPercent / 100) * ownedShares);
+  setText("sell-after-sell", String(afterSell));
+  setText("sell-remaining-shares", String(ownedShares - afterSell));
+
+  const offset = findSellOffsetForDigitSum8(ownedShares, afterSell);
+  setText("sell-share-offset", String(offset));
+
+  const sellShares = afterSell + offset;
+  setText("sell-shares", String(sellShares));
+
+  const totalRemainingShares = ownedShares - sellShares;
+  setText("sell-total-remaining", String(totalRemainingShares));
+  setText("sell-stock-value", formatUsd(totalRemainingShares * price));
+  setText("sell-value", formatUsd(sellShares * price));
+}
+
+function applyTickerDefaults(side) {
+  const tickerEl = document.getElementById(side === "buy" ? "buy-ticker" : "sell-ticker");
+  const priceEl = document.getElementById(side === "buy" ? "buy-price" : "sell-price");
+  const ownedEl = document.getElementById(side === "buy" ? "buy-owned" : "sell-owned");
+  if (!tickerEl || !priceEl || !ownedEl) return;
+
+  const asset = findAssetByTicker(tickerEl.value);
+  if (!asset) return;
+
+  const px = getQuote(asset.id)?.usd;
+  if (px != null && px > 0 && document.activeElement !== priceEl) {
+    priceEl.value = String(roundPriceInput(px));
+  }
+  if (document.activeElement !== ownedEl) {
+    const bal = heldBalanceForAsset(asset.id);
+    ownedEl.value = bal > 0 ? String(Math.floor(bal) === bal ? bal : roundPriceInput(bal)) : "0";
+  }
+  if (side === "buy") calculateBuy();
+  else calculateSell();
+}
+
+let buySellCashPrefillDone = false;
+
+function renderBuySell() {
+  const cash1 = document.getElementById("buy-cash1");
+  if (!cash1) return;
+
+  // Prefill Cash 1 from held cash once if still blank
+  if (!buySellCashPrefillDone && !String(cash1.value || "").trim() && document.activeElement !== cash1) {
+    const cash = heldCashUsd();
+    if (cash > 0) cash1.value = String(roundPriceInput(cash));
+    buySellCashPrefillDone = true;
+  }
+
+  // Keep outputs fresh without clobbering ticker-driven fields while typing
+  calculateBuy();
+  calculateSell();
+}
+
+function wireBuySell() {
+  const buyInputs = ["buy-cash1", "buy-cash2", "buy-price", "buy-owned"];
+  for (const id of buyInputs) {
+    document.getElementById(id)?.addEventListener("input", calculateBuy);
+  }
+  const sellInputs = ["sell-price", "sell-percent", "sell-owned"];
+  for (const id of sellInputs) {
+    document.getElementById(id)?.addEventListener("input", calculateSell);
+  }
+
+  const buyTicker = document.getElementById("buy-ticker");
+  buyTicker?.addEventListener("input", () => {
+    buyTicker.value = buyTicker.value.toUpperCase();
+    calculateBuy();
+  });
+  buyTicker?.addEventListener("blur", () => applyTickerDefaults("buy"));
+  buyTicker?.addEventListener("change", () => applyTickerDefaults("buy"));
+
+  const sellTicker = document.getElementById("sell-ticker");
+  sellTicker?.addEventListener("input", () => {
+    sellTicker.value = sellTicker.value.toUpperCase();
+    calculateSell();
+  });
+  sellTicker?.addEventListener("blur", () => applyTickerDefaults("sell"));
+  sellTicker?.addEventListener("change", () => applyTickerDefaults("sell"));
 }
 
 /** Placeholder vitals until the shield / power / health formulas land. */
@@ -3527,9 +3482,11 @@ function renderCrystalBall() {
     const coin = getAsset(r.coinId);
     if (!coin) continue;
     const pct = formatPct(r.changePct);
-    const row = document.createElement("div");
-    row.className = "holding-row";
-    row.setAttribute("role", "row");
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "holding-row holding-row-btn";
+    row.setAttribute("aria-label", `Edit future price for ${coin.symbol}`);
+    row.dataset.futureEdit = coin.id;
     row.innerHTML = `
       <div class="holding-left">
         ${coinAvatarHtml(coin)}
@@ -3547,6 +3504,10 @@ function renderCrystalBall() {
         <div class="holding-amount">${r.livePrice != null ? `now ${formatUsd(r.livePrice)}` : "—"}</div>
       </div>
     `;
+    row.addEventListener("click", (e) => {
+      if (e.target.closest("[data-open-tv]")) return;
+      openFuturePriceModal(coin.id);
+    });
     list.appendChild(row);
   }
 }
@@ -3729,7 +3690,7 @@ function renderRisk() {
   const empty = document.getElementById("risk-empty");
   if (!list) return;
 
-  const assets = heldAssetsForRisk();
+  const assets = heldAssetsForRisk({ includeCash: true });
   list.innerHTML = "";
   if (!assets.length) {
     if (empty) empty.hidden = false;
@@ -3764,53 +3725,76 @@ function renderRisk() {
   }
 }
 
-function renderFuture() {
-  const list = document.getElementById("future-list");
-  const empty = document.getElementById("future-empty");
-  if (!list) return;
+let futureModalCoinId = null;
 
-  const assets = heldAssetsForRisk();
-  list.innerHTML = "";
-  if (!assets.length) {
-    if (empty) empty.hidden = false;
-    return;
-  }
-  if (empty) empty.hidden = true;
+function openFuturePriceModal(coinId) {
+  const coin = getAsset(coinId);
+  const modal = document.getElementById("modal-future-price");
+  const input = document.getElementById("future-price-modal-input");
+  const head = document.getElementById("modal-future-head");
+  const hint = document.getElementById("modal-future-hint");
+  const title = document.getElementById("modal-future-title");
+  if (!coin || !modal || !input) return;
 
-  for (const coin of assets) {
-    const live = getQuote(coin.id)?.usd;
-    const saved = store.futurePrices?.[coin.id];
-    const shown =
-      Number.isFinite(saved) && saved > 0
-        ? saved
-        : live != null && live > 0
-          ? live
-          : null;
-    const row = document.createElement("div");
-    row.className = "future-row";
-    row.innerHTML = `
-      <div class="future-row-head">
+  futureModalCoinId = coin.id;
+  const live = getQuote(coin.id)?.usd;
+  const saved = store.futurePrices?.[coin.id];
+  const shown =
+    Number.isFinite(saved) && saved > 0
+      ? saved
+      : live != null && live > 0
+        ? live
+        : null;
+
+  if (title) title.textContent = `${coin.symbol} future`;
+  if (head) {
+    head.innerHTML = `
+      <div class="modal-future-asset">
         ${coinAvatarHtml(coin)}
-        <div class="future-row-text">
-          <div class="future-row-name">${escapeHtml(displayName(coin))}</div>
-          <div class="future-row-symbol">${escapeHtml(coin.symbol)}${
+        <div>
+          <div class="holding-name">${escapeHtml(displayName(coin))}</div>
+          <div class="holding-symbol">${escapeHtml(coin.symbol)}${
             live != null ? ` · now ${formatUsd(live)}` : ""
           }</div>
         </div>
       </div>
-      <label class="field-label" for="future-price-${escapeHtml(coin.id)}">Future price (USD)</label>
-      <input
-        id="future-price-${escapeHtml(coin.id)}"
-        class="field-input future-price-input"
-        type="text"
-        inputmode="decimal"
-        data-future-id="${escapeHtml(coin.id)}"
-        value="${shown != null ? escapeHtml(String(roundPriceInput(shown))) : ""}"
-        placeholder="e.g. 42000"
-      />
     `;
-    list.appendChild(row);
   }
+  if (hint) {
+    hint.textContent =
+      live != null
+        ? `Live quote ${formatUsd(live)}. Clear the field and save to use live.`
+        : "Clear the field and save to use the live quote when available.";
+  }
+  input.value = shown != null ? String(roundPriceInput(shown)) : "";
+  modal.hidden = false;
+  input.focus();
+  input.select?.();
+}
+
+function closeFuturePriceModal() {
+  const modal = document.getElementById("modal-future-price");
+  if (modal) modal.hidden = true;
+  futureModalCoinId = null;
+}
+
+function saveFuturePriceModal() {
+  const id = futureModalCoinId;
+  const input = document.getElementById("future-price-modal-input");
+  if (!id || !input) return;
+  const raw = input.value;
+  const cleaned = String(raw ?? "").replace(/,/g, "").trim();
+  if (cleaned) {
+    const n = Number(cleaned);
+    if (!Number.isFinite(n) || n <= 0) {
+      toast("Enter a valid future price", "error");
+      return;
+    }
+  }
+  const saved = setFuturePrice(id, raw);
+  closeFuturePriceModal();
+  renderHome();
+  toast(saved != null ? `Future ${getAsset(id)?.symbol || ""} · ${formatUsd(saved)}` : "Using live quote", "success");
 }
 
 function renderPortfolio() {
@@ -3993,6 +3977,7 @@ function renderAsset() {
   if (manualPriceCoinId !== coin.id) {
     manualPriceCoinId = coin.id;
     manualPriceDirty = false;
+    editingManualId = null;
   }
   const priceInput = document.getElementById("manual-price-input");
   priceInput.placeholder =
@@ -4042,17 +4027,26 @@ function renderAsset() {
             lotCost != null ? ` · cost ${formatUsd(lotCost)}` : ""
           }</span>`
         : `<span class="muted">No price paid</span>`;
+    const isEditing = editingManualId === entry.id;
+    card.classList.toggle("is-editing", isEditing);
     card.innerHTML = `
-      <div class="addr-title"><span class="tag manual">Manual</span>${escapeHtml(label)}</div>
+      <div class="addr-title"><span class="tag manual">Manual</span>${escapeHtml(label)}${
+        isEditing ? ` <span class="muted">· editing</span>` : ""
+      }</div>
       <div class="addr-meta">
         <span class="ok">${formatAmt(entry.amount, coin.symbol)}</span>
         <span>${formatUsd(v)}</span>
       </div>
       <div class="addr-meta">${priceLine}</div>
       <div class="addr-actions">
+        <button type="button" class="btn-tiny" data-edit>Edit</button>
         <button type="button" class="btn-tiny" data-remove>Remove</button>
       </div>
     `;
+    card.querySelector("[data-edit]").addEventListener("click", () => {
+      beginEditManual(entry);
+      renderAsset();
+    });
     card.querySelector("[data-remove]").addEventListener("click", () => {
       removeManualEntry(holding, entry);
       saveStore();
@@ -4061,6 +4055,7 @@ function renderAsset() {
     });
     manualList.appendChild(card);
   }
+  syncManualFormMode();
 
   // Address list
   const list = document.getElementById("asset-address-list");
@@ -4223,7 +4218,6 @@ function renderSearchResults(results, query) {
           /* last price stays */
         }
       }
-      refreshAll();
     });
     box.appendChild(btn);
   }
@@ -4445,18 +4439,83 @@ function roundPriceInput(n) {
   return Math.round(n * 1e8) / 1e8;
 }
 
+function manualEntryLotCost(entry) {
+  if (!entry) return null;
+  if (entry.costUsd != null && Number.isFinite(Number(entry.costUsd))) return Number(entry.costUsd);
+  if (entry.unitPrice != null) return manualLotCost(entry.amount, entry.unitPrice, entry.feePct);
+  return null;
+}
+
 /** Remove a manual entry and reverse its contribution to cost basis when priced. */
 function removeManualEntry(holding, entry) {
-  const lotCost =
-    entry.costUsd != null
-      ? entry.costUsd
-      : entry.unitPrice != null
-        ? manualLotCost(entry.amount, entry.unitPrice, entry.feePct)
-        : null;
+  const lotCost = manualEntryLotCost(entry);
   if (lotCost != null && Number.isFinite(lotCost)) {
     holding.costBasisUsd = Math.max(0, (Number(holding.costBasisUsd) || 0) - lotCost);
   }
   holding.manual = holding.manual.filter((m) => m.id !== entry.id);
+  if (editingManualId && entry.id === editingManualId) cancelEditManual({ silent: true });
+}
+
+function syncManualFormMode() {
+  const submit = document.getElementById("manual-form-submit");
+  const cancel = document.getElementById("manual-form-cancel");
+  const editing = !!editingManualId;
+  if (submit) submit.textContent = editing ? "Save changes" : "Add manual amount";
+  if (cancel) cancel.hidden = !editing;
+}
+
+function cancelEditManual({ silent } = {}) {
+  editingManualId = null;
+  manualPriceDirty = false;
+  const amount = document.getElementById("manual-amount-input");
+  const label = document.getElementById("manual-label-input");
+  const price = document.getElementById("manual-price-input");
+  if (amount) amount.value = "";
+  if (label) label.value = "";
+  if (price) price.value = "";
+  syncManualFormMode();
+  if (!silent) toast("Edit cancelled");
+}
+
+function beginEditManual(entry) {
+  if (!entry) return;
+  editingManualId = entry.id;
+  manualPriceDirty = true;
+  const amount = document.getElementById("manual-amount-input");
+  const label = document.getElementById("manual-label-input");
+  const price = document.getElementById("manual-price-input");
+  const fee = document.getElementById("manual-fee-input");
+  if (amount) amount.value = String(entry.amount);
+  if (label) label.value = entry.label || "";
+  if (price) {
+    price.value =
+      entry.unitPrice != null && Number.isFinite(Number(entry.unitPrice))
+        ? String(roundPriceInput(Number(entry.unitPrice)))
+        : "";
+  }
+  if (fee && entry.feePct > 0) fee.value = String(entry.feePct);
+  syncManualFormMode();
+  amount?.focus();
+  amount?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+}
+
+/** Replace an existing manual lot and rebalance cost basis. */
+function updateManualEntry(holding, entryId, amount, unitPrice, feePct, label) {
+  const entry = holding.manual.find((m) => m.id === entryId);
+  if (!entry) return false;
+  const oldCost = manualEntryLotCost(entry);
+  if (oldCost != null && Number.isFinite(oldCost)) {
+    holding.costBasisUsd = Math.max(0, (Number(holding.costBasisUsd) || 0) - oldCost);
+  }
+  entry.amount = amount;
+  entry.label = String(label || "").trim().slice(0, 40);
+  entry.unitPrice = unitPrice;
+  entry.feePct = unitPrice != null ? feePct : 0;
+  entry.costUsd = unitPrice != null ? manualLotCost(amount, unitPrice, feePct) : null;
+  if (entry.costUsd != null) {
+    holding.costBasisUsd = (Number(holding.costBasisUsd) || 0) + entry.costUsd;
+  }
+  return true;
 }
 
 function updateManualFeeHint() {
@@ -4500,13 +4559,42 @@ function addManualToCurrent(amountRaw, priceRaw, feeRaw, labelRaw) {
     }
   }
 
-  const costUsd = unitPrice != null ? manualLotCost(amount, unitPrice, feePct) : null;
-
   const holding = getCoinHolding(pf, coin.id);
+  const label = String(labelRaw || "").trim().slice(0, 40);
+  const editingId = editingManualId;
+
+  if (editingId) {
+    if (!holding.manual.some((m) => m.id === editingId)) {
+      editingManualId = null;
+      toast("That manual entry is gone", "error");
+      syncManualFormMode();
+      return;
+    }
+    updateManualEntry(holding, editingId, amount, unitPrice, feePct, label);
+    editingManualId = null;
+    saveStore();
+    document.getElementById("manual-amount-input").value = "";
+    document.getElementById("manual-label-input").value = "";
+    manualPriceDirty = false;
+    document.getElementById("manual-price-input").value = "";
+    syncManualFormMode();
+    render();
+    const cb = costBasisInfo(pf, coin.id);
+    const avgTxt = cb.avg != null ? formatUsd(cb.avg) : "—";
+    toast(
+      unitPrice != null
+        ? `Updated · avg ${avgTxt}`
+        : "Manual amount updated",
+      "success"
+    );
+    return;
+  }
+
+  const costUsd = unitPrice != null ? manualLotCost(amount, unitPrice, feePct) : null;
   holding.manual.push({
     id: uid(),
     amount,
-    label: String(labelRaw || "").trim().slice(0, 40),
+    label,
     unitPrice,
     feePct: unitPrice != null ? feePct : 0,
     costUsd,
@@ -4522,6 +4610,7 @@ function addManualToCurrent(amountRaw, priceRaw, feeRaw, labelRaw) {
   // Re-fill price with live market on next render
   manualPriceDirty = false;
   document.getElementById("manual-price-input").value = "";
+  syncManualFormMode();
   render();
 
   if (unitPrice != null) {
@@ -4580,8 +4669,7 @@ function importData(file) {
       saveStore();
       balanceCache = {};
       showView("home");
-      refreshAll();
-      toast("Import complete", "success");
+      toast("Import complete — tap refresh to update prices", "success");
     } catch {
       toast("Could not import file", "error");
     }
@@ -5504,17 +5592,20 @@ function wireKirlian() {
 }
 
 function wire() {
-  wirePullToRefresh();
   wireHomePager();
   wireKirlian();
   wireHoldingsSort();
   wirePortfolioListReorder();
+  wireBuySell();
 
   document.getElementById("home-chart-retry")?.addEventListener("click", () => {
     updateHomeChart(null, { force: true });
   });
 
   document.getElementById("btn-back").addEventListener("click", goBack);
+  document.getElementById("btn-refresh")?.addEventListener("click", () => {
+    refreshAll();
+  });
   wireBackSwipe();
 
   document.addEventListener(
@@ -5543,7 +5634,6 @@ function wire() {
 
   document.getElementById("btn-settings").addEventListener("click", () => showView("settings"));
   document.getElementById("btn-risk")?.addEventListener("click", () => showView("risk"));
-  document.getElementById("btn-future")?.addEventListener("click", () => showView("future"));
   document.getElementById("risk-list")?.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-risk-set]");
     if (!btn || nav.view !== "risk") return;
@@ -5553,25 +5643,20 @@ function wire() {
     setAssetRisk(id, n);
     renderRisk();
   });
-  const saveFutureInput = (input) => {
-    const id = input.getAttribute("data-future-id");
-    if (!id) return;
-    const saved = setFuturePrice(id, input.value);
-    if (saved != null) input.value = String(saved);
-    else if (!String(input.value || "").trim()) input.value = "";
-  };
-  document.getElementById("future-list")?.addEventListener("change", (e) => {
-    const input = e.target.closest?.(".future-price-input");
-    if (!input || nav.view !== "future") return;
-    saveFutureInput(input);
+
+  document.getElementById("modal-future-cancel")?.addEventListener("click", closeFuturePriceModal);
+  document.getElementById("modal-future-save")?.addEventListener("click", saveFuturePriceModal);
+  document.getElementById("modal-future-price")?.addEventListener("click", (e) => {
+    if (e.target?.id === "modal-future-price") closeFuturePriceModal();
   });
-  document.getElementById("future-list")?.addEventListener("keydown", (e) => {
-    if (e.key !== "Enter") return;
-    const input = e.target.closest?.(".future-price-input");
-    if (!input || nav.view !== "future") return;
-    e.preventDefault();
-    saveFutureInput(input);
-    input.blur();
+  document.getElementById("future-price-modal-input")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      saveFuturePriceModal();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      closeFuturePriceModal();
+    }
   });
 
   document.getElementById("btn-new-portfolio").addEventListener("click", () => openPortfolioModal("create"));
@@ -5618,6 +5703,11 @@ function wire() {
       document.getElementById("manual-fee-input").value,
       document.getElementById("manual-label-input").value
     );
+  });
+
+  document.getElementById("manual-form-cancel")?.addEventListener("click", () => {
+    cancelEditManual();
+    renderAsset();
   });
 
   document.getElementById("manual-price-input").addEventListener("input", () => {
@@ -5729,7 +5819,7 @@ function goBack() {
     showView("portfolio", { portfolioId: nav.portfolioId });
   } else if (nav.view === "portfolio") {
     showView("settings");
-  } else if (nav.view === "risk" || nav.view === "future") {
+  } else if (nav.view === "risk") {
     showView("settings");
   } else if (nav.view === "settings") {
     showView("home");
@@ -5737,7 +5827,7 @@ function goBack() {
 }
 
 function wireBackSwipe() {
-  const views = getViewsEl();
+  const views = document.getElementById("views");
   if (!views) return;
   const swipe = { startX: 0, startY: 0, dx: 0, locked: null, tracking: false, width: 0 };
 
@@ -5893,7 +5983,8 @@ lockPortraitOrientation();
 wire();
 render();
 startSplash();
-refreshAll({ fromPull: false });
+// First entry to the hoard: load live prices once. Later updates use the refresh button.
+refreshAll();
 
 if (!probeLocalStorage()) {
   storageWriteOk = false;

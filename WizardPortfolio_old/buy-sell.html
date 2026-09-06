@@ -1,0 +1,1327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buy/Sell</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Crimson Text', serif;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(20, 20, 20, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(15, 15, 15, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 40% 80%, rgba(10, 10, 10, 0.3) 0%, transparent 50%),
+                linear-gradient(135deg, #000000 0%, #050505 25%, #0a0a0a 50%, #0f0f0f 75%, #000000 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+            padding: 20px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 25% 25%, rgba(100, 100, 100, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 75% 75%, rgba(80, 80, 80, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* Glowing runes background styles */
+        .runes-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+            overflow: hidden;
+        }
+
+        .rune {
+            position: absolute;
+            font-family: 'Cinzel', serif;
+            font-size: 2rem;
+            font-weight: bold;
+            opacity: 0.3;
+            animation: runeGlow 4s ease-in-out infinite;
+            text-shadow: 0 0 10px currentColor;
+        }
+
+        .red-rune {
+            color: #ff4444;
+            text-shadow: 0 0 15px #ff4444, 0 0 30px #ff4444;
+        }
+
+        .green-rune {
+            color: #44ff44;
+            text-shadow: 0 0 15px #44ff44, 0 0 30px #44ff44;
+        }
+
+        .gold-rune {
+            color: #ffd700;
+            text-shadow: 0 0 15px #ffd700, 0 0 30px #ffd700;
+        }
+
+        @keyframes runeGlow {
+            0%, 100% { 
+                opacity: 0.2; 
+                transform: scale(1) rotate(0deg);
+            }
+            50% { 
+                opacity: 0.6; 
+                transform: scale(1.1) rotate(5deg);
+            }
+        }
+
+        /* Rune symbols for magical effect */
+        .rune-symbols {
+            font-size: 1.5rem;
+        }
+
+        /* Lightning bolt styles */
+        .lightning-bolt {
+            position: absolute;
+            pointer-events: none;
+            z-index: 1;
+            opacity: 0;
+            animation: lightningFlash 0.8s ease-in-out;
+        }
+
+        .lightning-segment {
+            position: absolute;
+            background: currentColor;
+            border-radius: 1px;
+            box-shadow: 0 0 5px currentColor, 0 0 10px currentColor, 0 0 15px currentColor;
+        }
+
+        .red-lightning {
+            color: #ff4444;
+        }
+
+        .green-lightning {
+            color: #44ff44;
+        }
+
+        .gold-lightning {
+            color: #ffd700;
+        }
+
+        @keyframes lightningFlash {
+            0% { opacity: 0; }
+            5% { opacity: 1; }
+            15% { opacity: 0.7; }
+            25% { opacity: 1; }
+            35% { opacity: 0.8; }
+            45% { opacity: 1; }
+            55% { opacity: 0.6; }
+            65% { opacity: 1; }
+            75% { opacity: 0.9; }
+            85% { opacity: 1; }
+            95% { opacity: 0.3; }
+            100% { opacity: 0; }
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .title {
+            font-family: 'Cinzel', serif;
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            text-shadow: 
+                2px 2px 0px #333,
+                4px 4px 8px rgba(0, 0, 0, 0.8);
+            background: linear-gradient(45deg, #e0e0e0, #f0f0f0, #d0d0d0, #c0c0c0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .nav-link {
+            color: #ccc;
+            text-decoration: none;
+            font-family: 'Cinzel', serif;
+            font-size: 1.1rem;
+            margin: 0 10px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            background: rgba(15, 15, 15, 0.8);
+            border: 2px solid rgba(20, 20, 20, 0.5);
+            transition: all 0.3s ease;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        .nav-link:hover {
+            background: rgba(20, 20, 20, 0.9);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(100, 100, 100, 0.3);
+        }
+
+        .main-content {
+            display: flex;
+            gap: 30px;
+            align-items: flex-start;
+        }
+
+        .calculator-section {
+            flex: 1;
+            background: 
+                linear-gradient(145deg, rgba(15, 15, 15, 0.6) 0%, rgba(20, 20, 20, 0.5) 50%, rgba(10, 10, 10, 0.6) 100%);
+            backdrop-filter: blur(5px);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 
+                0 0 30px rgba(100, 100, 100, 0.2),
+                inset 0 0 20px rgba(0, 0, 0, 0.5),
+                0 8px 32px rgba(0, 0, 0, 0.8);
+            border: 3px solid rgba(20, 20, 20, 0.5);
+            position: relative;
+            opacity: 0.85;
+        }
+
+        .calculator-section::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: rgba(20, 20, 20, 0.5);
+            border-radius: 5px;
+            z-index: -1;
+        }
+
+        .section-title {
+            font-family: 'Cinzel', serif;
+            font-size: 2rem;
+            font-weight: 600;
+            color: #ccc;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+            margin-bottom: 0px;
+            text-align: center;
+        }
+
+        .buy-section .section-title {
+            color: #27ae60;
+            text-shadow: 0 0 10px rgba(39, 174, 96, 0.5);
+        }
+
+        .sell-section .section-title {
+            color: #e74c3c;
+            text-shadow: 0 0 10px rgba(231, 76, 60, 0.5);
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            font-family: 'Cinzel', serif;
+            color: #ccc;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        input, select {
+            background: rgba(30, 30, 30, 0.9);
+            border: 2px solid rgba(20, 20, 20, 0.5);
+            border-radius: 8px;
+            padding: 10px;
+            color: #e0e0e0;
+            width: 100%;
+            font-family: 'Crimson Text', serif;
+            font-size: 1rem;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            box-shadow: 0 0 10px rgba(100, 100, 100, 0.5);
+            border-color: #aaa;
+        }
+
+        input::placeholder {
+            color: rgba(224, 224, 224, 0.6);
+        }
+
+        .calculated-field {
+            background: rgba(40, 40, 40, 0.9) !important;
+            border-color: rgba(60, 60, 60, 0.5) !important;
+            color: #f0f0f0 !important;
+            font-weight: bold;
+        }
+
+        .calculated-value {
+            color: #f0f0f0;
+            font-weight: bold;
+            font-family: 'Cinzel', serif;
+            font-size: 1rem;
+            margin-left: 10px;
+            padding: 4px 8px;
+            background: rgba(40, 40, 40, 0.9);
+            border: 1px solid rgba(60, 60, 60, 0.5);
+            border-radius: 4px;
+        }
+
+        .calculated-value.buy-shares {
+            color: #27ae60;
+            border-color: rgba(39, 174, 96, 0.5);
+        }
+
+        .calculated-value.sell-shares {
+            color: #e74c3c;
+            border-color: rgba(231, 76, 60, 0.5);
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: 2px solid;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+            font-family: 'Cinzel', serif;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+            position: relative;
+            overflow: hidden;
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        .btn-buy {
+            background: linear-gradient(45deg, #27ae60 0%, #2ecc71 100%);
+            border-color: #27ae60;
+            color: white;
+        }
+
+        .btn-sell {
+            background: linear-gradient(45deg, #e74c3c 0%, #c0392b 100%);
+            border-color: #e74c3c;
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .results-section {
+            margin-top: 20px;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            border: 1px solid rgba(100, 100, 100, 0.3);
+        }
+
+        .result-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(100, 100, 100, 0.2);
+        }
+
+        .result-item:last-child {
+            border-bottom: none;
+        }
+
+        .result-label {
+            font-family: 'Crimson Text', serif;
+            color: #e0e0e0;
+        }
+
+        .result-value {
+            font-family: 'Cinzel', serif;
+            font-weight: 600;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+        }
+
+        .positive {
+            color: #27ae60;
+            text-shadow: 0 0 5px rgba(39, 174, 96, 0.5);
+        }
+
+        .negative {
+            color: #e74c3c;
+            text-shadow: 0 0 5px rgba(231, 76, 60, 0.5);
+        }
+
+        .neutral {
+            color: #e0e0e0;
+        }
+
+        /* Lightning toggle button styles */
+        .lightning-toggle-btn {
+            color: #ccc;
+            text-decoration: none;
+            font-family: 'Cinzel', serif;
+            font-size: 1.1rem;
+            margin: 0 10px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            background: rgba(15, 15, 15, 0.8);
+            border: 2px solid rgba(20, 20, 20, 0.5);
+            transition: all 0.3s ease;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .lightning-toggle-btn:hover {
+            background: rgba(20, 20, 20, 0.9);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(100, 100, 100, 0.3);
+        }
+
+        .lightning-toggle-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .lightning-toggle-btn:hover::before {
+            left: 100%;
+        }
+
+        .lightning-toggle-btn.active {
+            background: linear-gradient(45deg, #ffd700 0%, #ffed4e 100%);
+            border-color: #ffd700;
+            color: #000;
+            text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.5);
+        }
+
+        .lightning-toggle-btn.active:hover {
+            background: linear-gradient(45deg, #ffed4e 0%, #ffd700 100%);
+            box-shadow: 0 5px 20px rgba(255, 215, 0, 0.7);
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+                gap: 20px;
+            }
+            
+            .form-row {
+                flex-direction: column;
+            }
+            
+            .title {
+                font-size: 2rem;
+            }
+            
+            .section-title {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">Buy/Sell</h1>
+            <div>
+                <a href="index.html" class="nav-link">← Back to Home</a>
+                <a href="data.html" class="nav-link">📊 Portfolio</a>
+                <a href="risk.html" class="nav-link">🛡️ Risk</a>
+                <button class="lightning-toggle-btn" id="lightningToggleBtn" onclick="toggleLightning()">⚡</button>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <!-- Buy Section -->
+            <div class="calculator-section buy-section">
+                <h2 class="section-title">🟢 Buy Calculations</h2>
+                
+                <div class="form-group">
+                    <label for="buyTicker">Ticker:</label>
+                    <input type="text" id="buyTicker" placeholder="e.g., TSLA" oninput="calculateBuy()" onblur="fetchBuyPrice()">
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="buyCash1">Cash 1:</label>
+                        <input type="number" id="buyCash1" step="0.01" placeholder="0.00" oninput="calculateBuy()">
+                    </div>
+                    <div class="form-group">
+                        <label for="buyCash2">Cash 2:</label>
+                        <input type="number" id="buyCash2" step="0.01" placeholder="0.00" oninput="calculateBuy()">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Total Money: <span class="calculated-value" id="buyTotalMoney">$0.00</span></label>
+                </div>
+
+                <div class="form-group">
+                    <label for="buyPrice">Current Price:</label>
+                    <input type="number" id="buyPrice" step="0.01" placeholder="0.00" oninput="calculateBuy()">
+                </div>
+
+                <div class="form-group">
+                    <label for="buyOwnedShares">Owned Shares:</label>
+                    <input type="number" id="buyOwnedShares" step="1" placeholder="0" oninput="calculateBuy()">
+                </div>
+
+                <div class="form-group">
+                    <label>New Shares: <span class="calculated-value" id="buyNewShares">0</span></label>
+                </div>
+
+                <div class="form-group">
+                    <label>Total Shares: <span class="calculated-value" id="buyTotalShares">0</span></label>
+                </div>
+
+                <div class="form-group">
+                    <label>Share Offset: <span class="calculated-value" id="buyShareOffset">0</span></label>
+                </div>
+
+                <div class="form-group">
+                    <label>Offset Total: <span class="calculated-value" id="buyOffsetTotal">0</span></label>
+                </div>
+
+                <div class="form-group">
+                    <label>Cost: <span class="calculated-value" id="buyCost">$0.00</span></label>
+                </div>
+
+                <div class="form-group">
+                    <label>Money Left: <span class="calculated-value" id="buyMoneyLeft">$0.00</span></label>
+                </div>
+
+                <div class="form-group">
+                    <label>Buy Shares: <span class="calculated-value buy-shares" id="buyShares">0</span></label>
+                </div>
+
+            </div>
+
+            <!-- Sell Section -->
+            <div class="calculator-section sell-section">
+                <h2 class="section-title">🔴 Sell Calculations</h2>
+                
+                <div class="form-group">
+                    <label for="sellTicker">Ticker:</label>
+                    <input type="text" id="sellTicker" placeholder="e.g., TSLA" oninput="calculateSell()" onblur="fetchSellPrice()">
+                </div>
+
+                <div class="form-group">
+                    <label for="sellPrice">Current Price:</label>
+                    <input type="number" id="sellPrice" step="0.01" placeholder="0.00" oninput="calculateSell()">
+                </div>
+
+                <div class="form-group">
+                    <label for="sellPercent">Sell Percent:</label>
+                    <input type="number" id="sellPercent" step="0.01" placeholder="0.00" oninput="calculateSell()">
+                </div>
+
+                <div class="form-group">
+                    <label for="sellOwnedShares">Owned Shares:</label>
+                    <input type="number" id="sellOwnedShares" step="1" placeholder="0" oninput="calculateSell()">
+                </div>
+
+                <div class="form-group">
+                    <label>After Sell: <span class="calculated-value" id="sellAfterSell">0</span></label>
+                </div>
+
+                <div class="form-group">
+                    <label>Remaining Shares: <span class="calculated-value" id="sellRemainingShares">0</span></label>
+                </div>
+
+                <div class="form-group">
+                    <label>Share Offset: <span class="calculated-value" id="sellShareOffset">0</span></label>
+                </div>
+
+                <div class="form-group">
+                    <label>Sell Shares: <span class="calculated-value sell-shares" id="sellShares">0</span></label>
+                </div>
+
+                <div class="form-group">
+                    <label>Total Remaining Shares: <span class="calculated-value" id="sellTotalRemainingShares">0</span></label>
+                </div>
+
+                <div class="form-group">
+                    <label>Stock Value: <span class="calculated-value" id="sellStockValue">$0.00</span></label>
+                </div>
+
+                <div class="form-group">
+                    <label>Sell Value: <span class="calculated-value" id="sellValue">$0.00</span></label>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Glowing runes background -->
+    <div class="runes-background" id="runesBackground"></div>
+
+    <script>
+        // Rune symbols for magical effect
+        const runeSymbols = ['ᚠ', 'ᚢ', 'ᚦ', 'ᚨ', 'ᚱ', 'ᚲ', 'ᚷ', 'ᚹ', 'ᚺ', 'ᚾ', 'ᛁ', 'ᛃ', 'ᛇ', 'ᛈ', 'ᛉ', 'ᛊ', 'ᛏ', 'ᛒ', 'ᛖ', 'ᛗ', 'ᛚ', 'ᛜ', 'ᛞ', 'ᛟ'];
+
+        // Create glowing runes in the background
+        function createRunes(runeType, count = 15) {
+            const runesBackground = document.getElementById('runesBackground');
+            
+            // Clear existing runes
+            runesBackground.innerHTML = '';
+            
+            for (let i = 0; i < count; i++) {
+                const rune = document.createElement('div');
+                rune.className = `rune ${runeType}-rune rune-symbols`;
+                
+                // Random rune symbol
+                const symbol = runeSymbols[Math.floor(Math.random() * runeSymbols.length)];
+                rune.textContent = symbol;
+                
+                // Random position
+                const x = Math.random() * 100;
+                const y = Math.random() * 100;
+                rune.style.left = x + '%';
+                rune.style.top = y + '%';
+                
+                // Random animation delay
+                rune.style.animationDelay = Math.random() * 4 + 's';
+                
+                // Random size variation
+                const size = 1.5 + Math.random() * 1;
+                rune.style.fontSize = size + 'rem';
+                
+                runesBackground.appendChild(rune);
+            }
+        }
+
+        // Update runes background based on Today's Change percentage intensity
+        function updateRunesBackground() {
+            // Load portfolio data to check Today's Change percentage
+            const portfolioData = loadPortfolioData();
+            if (!portfolioData || portfolioData.length === 0) {
+                // Gold runes if no data
+                createRunes('gold', 50);
+                const lightningEnabled = localStorage.getItem('lightningEnabled') === 'true';
+                if (lightningEnabled) {
+                    startLightningBolts('gold', 1);
+                }
+                return;
+            }
+
+            // Calculate portfolio stats
+            const stats = calculatePortfolioStats(portfolioData);
+            const todayChangePercent = Math.abs(stats.todayChange); // Today's Change percentage
+            
+            // Calculate intensity multiplier based on Today's Change percentage magnitude
+            let intensityMultiplier = 1;
+            if (todayChangePercent > 5) {
+                intensityMultiplier = 3; // Very high volatility (>5% change)
+            } else if (todayChangePercent > 3) {
+                intensityMultiplier = 2.5; // High volatility (>3% change)
+            } else if (todayChangePercent > 1) {
+                intensityMultiplier = 2; // Medium volatility (>1% change)
+            } else if (todayChangePercent > 0.5) {
+                intensityMultiplier = 1.5; // Low volatility (>0.5% change)
+            }
+            
+            // Base rune count
+            const baseRuneCount = 50;
+            const runeCount = Math.floor(baseRuneCount * intensityMultiplier);
+            
+            // Check if lightning is enabled
+            const lightningEnabled = localStorage.getItem('lightningEnabled') === 'true';
+            
+            if (stats.todayChange > 1) {
+                // Green runes for positive Today's Change - more intense for higher percentages
+                createRunes('green', runeCount);
+                if (lightningEnabled) {
+                    startLightningBolts('green', intensityMultiplier);
+                }
+            } else if (stats.todayChange < -1) {
+                // Red runes for negative Today's Change - more intense for higher absolute percentages
+                createRunes('red', runeCount);
+                if (lightningEnabled) {
+                    startLightningBolts('red', intensityMultiplier);
+                }
+            } else {
+                // Gold runes for stable performance
+                createRunes('gold', runeCount);
+                if (lightningEnabled) {
+                    startLightningBolts('gold', intensityMultiplier);
+                }
+            }
+        }
+
+        // Create fractal lightning bolt starting from edge with intensity
+        function createFractalLightning(lightningType, intensityMultiplier = 1) {
+            const runesBackground = document.getElementById('runesBackground');
+            const lightning = document.createElement('div');
+            lightning.className = `lightning-bolt ${lightningType}-lightning`;
+            
+            // Get viewport dimensions
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            
+            // Create multiple lightning bolts from different edges based on intensity
+            const baseBolts = 2;
+            const maxBolts = Math.floor(baseBolts * intensityMultiplier) + Math.floor(Math.random() * 3);
+            const numBolts = Math.min(maxBolts, 8); // Cap at 8 bolts maximum
+            
+            for (let i = 0; i < numBolts; i++) {
+                // Randomly choose which edge to start from
+                const edge = Math.floor(Math.random() * 4); // 0=top, 1=right, 2=bottom, 3=left
+                let startX, startY;
+                
+                switch (edge) {
+                    case 0: // Top edge
+                        startX = Math.random() * viewportWidth;
+                        startY = 0;
+                        break;
+                    case 1: // Right edge
+                        startX = viewportWidth;
+                        startY = Math.random() * viewportHeight;
+                        break;
+                    case 2: // Bottom edge
+                        startX = Math.random() * viewportWidth;
+                        startY = viewportHeight;
+                        break;
+                    case 3: // Left edge
+                        startX = 0;
+                        startY = Math.random() * viewportHeight;
+                        break;
+                }
+                
+                // Multiple target points for more complex patterns
+                const targets = [
+                    { x: viewportWidth / 2, y: viewportHeight / 2 }, // Center
+                    { x: viewportWidth * 0.3, y: viewportHeight * 0.3 }, // Top-left area
+                    { x: viewportWidth * 0.7, y: viewportHeight * 0.3 }, // Top-right area
+                    { x: viewportWidth * 0.3, y: viewportHeight * 0.7 }, // Bottom-left area
+                    { x: viewportWidth * 0.7, y: viewportHeight * 0.7 }  // Bottom-right area
+                ];
+                
+                const target = targets[Math.floor(Math.random() * targets.length)];
+                
+                // Create fractal lightning tree with increased complexity based on intensity
+                const maxDepth = Math.min(8 + Math.floor(intensityMultiplier * 2), 12); // Deeper fractals for higher intensity
+                createLightningBranch(lightning, startX, startY, target.x, target.y, lightningType, 0, maxDepth);
+            }
+            
+            runesBackground.appendChild(lightning);
+            
+            // Remove after animation completes
+            setTimeout(() => {
+                if (lightning.parentNode) {
+                    lightning.parentNode.removeChild(lightning);
+                }
+            }, 1200);
+        }
+
+        // Create a lightning branch (recursive fractal)
+        function createLightningBranch(container, startX, startY, targetX, targetY, lightningType, depth, maxDepth) {
+            if (depth >= maxDepth) return;
+            
+            // Calculate distance and direction to target
+            const dx = targetX - startX;
+            const dy = targetY - startY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // If we're close enough to target, stop branching
+            if (distance < 30) return;
+            
+            // More aggressive randomness for deeper fractals
+            const angle = Math.atan2(dy, dx);
+            const randomAngle = angle + (Math.random() - 0.5) * Math.PI / 2; // ±45 degrees
+            const segmentLength = Math.min(distance * (0.2 + Math.random() * 0.3), 80 + Math.random() * 120);
+            
+            const endX = startX + Math.cos(randomAngle) * segmentLength;
+            const endY = startY + Math.sin(randomAngle) * segmentLength;
+            
+            // Create lightning segment with varied thickness
+            const segment = document.createElement('div');
+            segment.className = 'lightning-segment';
+            
+            // Calculate segment properties
+            const actualSegmentLength = Math.sqrt((endX - startX) ** 2 + (endY - startY) ** 2);
+            const segmentAngle = Math.atan2(endY - startY, endX - startX) * 180 / Math.PI;
+            
+            // Varied thickness based on depth (thicker at base, thinner at tips)
+            const thickness = Math.max(1, 6 - depth * 0.8 + Math.random() * 2);
+            
+            // Position and style the segment
+            segment.style.left = startX + 'px';
+            segment.style.top = startY + 'px';
+            segment.style.width = actualSegmentLength + 'px';
+            segment.style.height = thickness + 'px';
+            segment.style.transformOrigin = '0 50%';
+            segment.style.transform = `rotate(${segmentAngle}deg)`;
+            
+            // Add slight opacity variation for more organic look
+            segment.style.opacity = 0.8 + Math.random() * 0.2;
+            
+            container.appendChild(segment);
+            
+            // Create multiple branches for more complex fractals
+            if (depth < maxDepth - 1) {
+                // Main branch continues toward target (higher probability)
+                if (Math.random() < 0.8) {
+                    createLightningBranch(container, endX, endY, targetX, targetY, lightningType, depth + 1, maxDepth);
+                }
+                
+                // Multiple side branches with different probabilities
+                const numSideBranches = Math.floor(Math.random() * 4); // 0-3 side branches
+                
+                for (let i = 0; i < numSideBranches; i++) {
+                    if (Math.random() < 0.6) { // 60% chance for each potential branch
+                        const sideAngle = randomAngle + (Math.random() - 0.5) * Math.PI * (0.5 + Math.random() * 0.5);
+                        const sideLength = segmentLength * (0.2 + Math.random() * 0.6);
+                        const sideEndX = endX + Math.cos(sideAngle) * sideLength;
+                        const sideEndY = endY + Math.sin(sideAngle) * sideLength;
+                        
+                        // Create sub-branches with reduced max depth
+                        createLightningBranch(container, endX, endY, sideEndX, sideEndY, lightningType, depth + 1, maxDepth - 1);
+                    }
+                }
+                
+                // Occasionally create micro-branches (very short, thin branches)
+                if (Math.random() < 0.3 && depth < maxDepth - 2) {
+                    const microAngle = randomAngle + (Math.random() - 0.5) * Math.PI;
+                    const microLength = segmentLength * (0.1 + Math.random() * 0.2);
+                    const microEndX = endX + Math.cos(microAngle) * microLength;
+                    const microEndY = endY + Math.sin(microAngle) * microLength;
+                    
+                    // Create very short micro-branch
+                    const microSegment = document.createElement('div');
+                    microSegment.className = 'lightning-segment';
+                    const microSegmentLength = Math.sqrt((microEndX - endX) ** 2 + (microEndY - endY) ** 2);
+                    const microSegmentAngle = Math.atan2(microEndY - endY, microEndX - endX) * 180 / Math.PI;
+                    
+                    microSegment.style.left = endX + 'px';
+                    microSegment.style.top = endY + 'px';
+                    microSegment.style.width = microSegmentLength + 'px';
+                    microSegment.style.height = '1px';
+                    microSegment.style.transformOrigin = '0 50%';
+                    microSegment.style.transform = `rotate(${microSegmentAngle}deg)`;
+                    microSegment.style.opacity = 0.6;
+                    
+                    container.appendChild(microSegment);
+                }
+            }
+        }
+
+        // Start lightning bolt effects with intensity multiplier
+        function startLightningBolts(lightningType, intensityMultiplier = 1) {
+            // Clear any existing lightning intervals
+            if (window.lightningInterval) {
+                clearInterval(window.lightningInterval);
+            }
+            
+            // Calculate lightning frequency based on intensity
+            const baseChance = 0.2; // 20% base chance
+            const lightningChance = Math.min(baseChance * intensityMultiplier, 0.8); // Cap at 80%
+            const intervalTime = Math.max(1000 / intensityMultiplier, 200); // Faster intervals for higher intensity
+            
+            // Create fractal lightning bolts at random intervals
+            window.lightningInterval = setInterval(() => {
+                // Random chance to create lightning based on intensity
+                if (Math.random() < lightningChance) {
+                    createFractalLightning(lightningType, intensityMultiplier);
+                }
+            }, intervalTime);
+        }
+
+        // Stop lightning bolt effects
+        function stopLightningBolts() {
+            if (window.lightningInterval) {
+                clearInterval(window.lightningInterval);
+                window.lightningInterval = null;
+            }
+        }
+
+        // Lightning toggle functionality
+        function toggleLightning() {
+            const button = document.getElementById('lightningToggleBtn');
+            const isActive = button.classList.contains('active');
+            
+            if (isActive) {
+                // Turn off lightning effects
+                stopLightningBolts();
+                button.classList.remove('active');
+                button.textContent = '⚡';
+                localStorage.setItem('lightningEnabled', 'false');
+            } else {
+                // Turn on lightning effects
+                const portfolioData = loadPortfolioData();
+                const stats = calculatePortfolioStats(portfolioData);
+                const todayChangePercent = Math.abs(stats.todayChange);
+                
+                // Calculate intensity multiplier based on Today's Change percentage magnitude
+                let intensityMultiplier = 1;
+                if (todayChangePercent > 5) {
+                    intensityMultiplier = 3;
+                } else if (todayChangePercent > 3) {
+                    intensityMultiplier = 2.5;
+                } else if (todayChangePercent > 1) {
+                    intensityMultiplier = 2;
+                } else if (todayChangePercent > 0.5) {
+                    intensityMultiplier = 1.5;
+                }
+                
+                if (stats.todayChange > 1) {
+                    startLightningBolts('green', intensityMultiplier);
+                } else if (stats.todayChange < -1) {
+                    startLightningBolts('red', intensityMultiplier);
+                } else {
+                    startLightningBolts('gold', intensityMultiplier);
+                }
+                
+                button.classList.add('active');
+                button.textContent = '⚡';
+                localStorage.setItem('lightningEnabled', 'true');
+            }
+        }
+
+        // Initialize lightning toggle state
+        function initializeLightningToggle() {
+            const button = document.getElementById('lightningToggleBtn');
+            const lightningEnabled = localStorage.getItem('lightningEnabled');
+            
+            // Default to ON if no preference is set
+            if (lightningEnabled === null || lightningEnabled === 'true') {
+                button.classList.add('active');
+                button.textContent = '⚡';
+                localStorage.setItem('lightningEnabled', 'true');
+            } else {
+                button.classList.remove('active');
+                button.textContent = '⚡';
+            }
+        }
+
+        // Load portfolio data from localStorage
+        function loadPortfolioData() {
+            const saved = localStorage.getItem('portfolioData');
+            if (saved) {
+                return JSON.parse(saved);
+            }
+            return [];
+        }
+
+        // Calculate portfolio statistics (simplified version)
+        function calculatePortfolioStats(portfolioData) {
+            if (!portfolioData || portfolioData.length === 0) {
+                return { todayChange: 0 };
+            }
+
+            const totalValue = portfolioData.reduce((sum, entry) => sum + (entry.value || 0), 0);
+            
+            // Calculate today's change using SUMPRODUCT(Total Allocation %, Today's Gain/Loss %)
+            let sumproductTodayChange = 0;
+            portfolioData.forEach((entry) => {
+                if (entry.currentPrice && entry.previousClose && entry.shares) {
+                    // Calculate allocation percentage
+                    const allocationPercent = totalValue > 0 ? (entry.value / totalValue) * 100 : 0;
+                    
+                    // Calculate today's gain/loss percentage: ((current price - previous close) / current price) * 100
+                    const priceChange = entry.currentPrice - entry.previousClose;
+                    const todayGainLossPercent = entry.currentPrice ? (priceChange / entry.currentPrice) * 100 : 0;
+                    
+                    // SUMPRODUCT: allocation_percent * today_gain_loss_percent
+                    sumproductTodayChange += (allocationPercent / 100) * todayGainLossPercent;
+                }
+            });
+
+            return {
+                todayChange: sumproductTodayChange
+            };
+        }
+
+        // Function to calculate digit sum
+        function calculateDigitSum(number) {
+            let sum = 0;
+            let num = Math.abs(number);
+            while (num > 0) {
+                sum += num % 10;
+                num = Math.floor(num / 10);
+            }
+            return sum;
+        }
+
+        // Function to reduce digit sum to single digit
+        function reduceToSingleDigit(number) {
+            let sum = calculateDigitSum(number);
+            while (sum >= 10) {
+                sum = calculateDigitSum(sum);
+            }
+            return sum;
+        }
+
+        // Function to find offset that makes Offset Total digits sum to 8
+        function findOffsetForDigitSum8(ownedShares, newShares) {
+            // Try different offsets to find one that makes the Offset Total sum to 8
+            // Offset Total = Owned Shares + Buy Shares
+            // Buy Shares = INT(New Shares + Offset)
+            
+            // Start from 0 and work towards negative values to find the closest offset
+            for (let offset = 0; offset >= -1000; offset--) {
+                const buyShares = Math.floor(newShares + offset);
+                if (buyShares > 0) { // Make sure we don't get negative or zero buy shares
+                    const offsetTotal = ownedShares + buyShares;
+                    if (offsetTotal > 0) { // Make sure offset total is positive
+                        const digitSum = reduceToSingleDigit(offsetTotal);
+                        if (digitSum === 8) {
+                            console.log(`Found offset: ${offset}, Buy Shares: ${buyShares}, Offset Total: ${offsetTotal}, Digit Sum: ${digitSum}`);
+                            return offset;
+                        }
+                    }
+                }
+            }
+            
+            console.log(`No offset found for ownedShares: ${ownedShares}, newShares: ${newShares}`);
+            // If no offset found, return 0
+            return 0;
+        }
+
+        // Function to find offset for sell calculations to make remaining shares digits sum to 8
+        function findSellOffsetForDigitSum8(ownedShares, afterSell) {
+            // Try different offsets to find one that makes the Remaining Shares sum to 8
+            // Remaining Shares = Owned Shares - Sell Shares
+            // Sell Shares = After Sell + Offset
+            
+            // Start from 0 and work towards negative values to find the closest offset
+            for (let offset = 0; offset >= -1000; offset--) {
+                const sellShares = Math.floor(afterSell + offset);
+                if (sellShares > 0) { // Make sure we don't get negative or zero sell shares
+                    const remainingShares = ownedShares - sellShares;
+                    if (remainingShares > 0) { // Make sure remaining shares is positive
+                        const digitSum = reduceToSingleDigit(remainingShares);
+                        if (digitSum === 8) {
+                            console.log(`Found sell offset: ${offset}, Sell Shares: ${sellShares}, Remaining Shares: ${remainingShares}, Digit Sum: ${digitSum}`);
+                            return offset;
+                        }
+                    }
+                }
+            }
+            
+            console.log(`No sell offset found for ownedShares: ${ownedShares}, afterSell: ${afterSell}`);
+            // If no offset found, return 0
+            return 0;
+        }
+
+        // Buy calculation function
+        function calculateBuy() {
+            const cash1 = parseFloat(document.getElementById('buyCash1').value) || 0;
+            const cash2 = parseFloat(document.getElementById('buyCash2').value) || 0;
+            const price = parseFloat(document.getElementById('buyPrice').value) || 0;
+            const ownedShares = parseInt(document.getElementById('buyOwnedShares').value) || 0;
+
+            // Calculate total money
+            const totalMoney = cash1 + cash2;
+            document.getElementById('buyTotalMoney').textContent = '$' + totalMoney.toFixed(2);
+
+            // Calculate new shares (floor to get whole shares only)
+            const newShares = price > 0 ? Math.floor(totalMoney / price) : 0;
+            document.getElementById('buyNewShares').textContent = newShares;
+
+            // Calculate total shares
+            const totalShares = ownedShares + newShares;
+            document.getElementById('buyTotalShares').textContent = totalShares;
+
+            // Calculate share offset to make total digits sum to 8
+            const shareOffset = findOffsetForDigitSum8(ownedShares, newShares);
+            document.getElementById('buyShareOffset').textContent = shareOffset;
+
+            // Calculate buy shares (INT(New Shares + Offset))
+            const buyShares = Math.floor(newShares + shareOffset);
+            document.getElementById('buyShares').textContent = buyShares;
+
+            // Calculate offset total (INT(Owned Shares + Buy Shares))
+            const offsetTotal = Math.floor(ownedShares + buyShares);
+            document.getElementById('buyOffsetTotal').textContent = offsetTotal;
+
+            // Calculate cost (Buy Shares * Price)
+            const cost = buyShares * price;
+            document.getElementById('buyCost').textContent = '$' + cost.toFixed(2);
+
+            // Calculate money left (Total Money - Cost)
+            const moneyLeft = totalMoney - cost;
+            document.getElementById('buyMoneyLeft').textContent = '$' + moneyLeft.toFixed(2);
+
+        }
+
+
+        // Sell calculation function
+        function calculateSell() {
+            const sellPercent = parseFloat(document.getElementById('sellPercent').value) || 0;
+            const ownedShares = parseInt(document.getElementById('sellOwnedShares').value) || 0;
+            const price = parseFloat(document.getElementById('sellPrice').value) || 0;
+
+            // Calculate after sell (Sell Percent * Owned Shares / 100)
+            const afterSell = Math.floor((sellPercent / 100) * ownedShares);
+            document.getElementById('sellAfterSell').textContent = afterSell;
+
+            // Calculate remaining shares (Owned Shares - After Sell)
+            const remainingShares = ownedShares - afterSell;
+            document.getElementById('sellRemainingShares').textContent = remainingShares;
+
+            // Find offset to make remaining shares digits sum to 8
+            const offset = findSellOffsetForDigitSum8(ownedShares, afterSell);
+            document.getElementById('sellShareOffset').textContent = offset;
+
+            // Calculate sell shares (After Sell + Offset)
+            const sellShares = afterSell + offset;
+            document.getElementById('sellShares').textContent = sellShares;
+
+            // Calculate total remaining shares (Owned Shares - Sell Shares)
+            const totalRemainingShares = ownedShares - sellShares;
+            document.getElementById('sellTotalRemainingShares').textContent = totalRemainingShares;
+
+            // Calculate stock value (Total Remaining Shares * Current Price)
+            const stockValue = totalRemainingShares * price;
+            document.getElementById('sellStockValue').textContent = '$' + stockValue.toFixed(2);
+
+            // Calculate sell value (Sell Shares * Current Price)
+            const sellValue = sellShares * price;
+            document.getElementById('sellValue').textContent = '$' + sellValue.toFixed(2);
+
+        }
+
+
+        // Fetch stock price for buy section
+        async function fetchBuyPrice() {
+            const ticker = document.getElementById('buyTicker').value.trim().toUpperCase();
+            if (!ticker) return;
+            
+            try {
+                const price = await fetchStockPrice(ticker);
+                if (price && price > 0) {
+                    document.getElementById('buyPrice').value = price.toFixed(2);
+                    calculateBuy(); // Recalculate with new price
+                }
+            } catch (error) {
+                console.warn(`Failed to fetch price for ${ticker}:`, error.message);
+            }
+        }
+
+        // Fetch stock price for sell section
+        async function fetchSellPrice() {
+            const ticker = document.getElementById('sellTicker').value.trim().toUpperCase();
+            if (!ticker) return;
+            
+            try {
+                const price = await fetchStockPrice(ticker);
+                if (price && price > 0) {
+                    document.getElementById('sellPrice').value = price.toFixed(2);
+                    calculateSell(); // Recalculate with new price
+                }
+            } catch (error) {
+                console.warn(`Failed to fetch price for ${ticker}:`, error.message);
+            }
+        }
+
+        // Fetch stock price using multiple methods with fallbacks
+        async function fetchStockPrice(symbol) {
+            const methods = [
+                () => fetchStockPriceViaProxy(symbol),
+                () => fetchStockPriceViaIEX(symbol),
+                () => fetchStockPriceViaAlphaVantage(symbol),
+                () => fetchStockPriceViaFinnhub(symbol)
+            ];
+            
+            for (let i = 0; i < methods.length; i++) {
+                try {
+                    const price = await methods[i]();
+                    if (price && price > 0) {
+                        return price;
+                    }
+                } catch (error) {
+                    if (i === methods.length - 1) {
+                        throw error; // Re-throw if all methods failed
+                    }
+                }
+            }
+        }
+        
+        // Method 1: Using CORS proxy for Yahoo Finance
+        async function fetchStockPriceViaProxy(symbol) {
+            try {
+                const proxyUrl = 'https://api.allorigins.win/raw?url=';
+                const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}`;
+                const url = proxyUrl + encodeURIComponent(yahooUrl);
+                
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (!data.chart || !data.chart.result || data.chart.result.length === 0) {
+                    throw new Error('No data returned from API');
+                }
+                
+                const result = data.chart.result[0];
+                const meta = result.meta;
+                
+                if (!meta || meta.regularMarketPrice === undefined) {
+                    throw new Error('Price data not available');
+                }
+                
+                return meta.regularMarketPrice;
+                
+            } catch (error) {
+                throw error;
+            }
+        }
+        
+        // Method 2: Using IEX Cloud (free tier)
+        async function fetchStockPriceViaIEX(symbol) {
+            try {
+                const apiKey = 'pk_test_1234567890abcdef'; // Free test key
+                const url = `https://cloud.iexapis.com/stable/stock/${symbol}/quote?token=${apiKey}`;
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.latestPrice && data.latestPrice > 0) {
+                    return data.latestPrice;
+                }
+                
+                throw new Error('Price data not available');
+                
+            } catch (error) {
+                throw error;
+            }
+        }
+        
+        // Method 3: Using Alpha Vantage (free tier)
+        async function fetchStockPriceViaAlphaVantage(symbol) {
+            try {
+                const apiKey = 'demo'; // Using demo key for free access
+                const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${apiKey}`;
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data['Global Quote'] && data['Global Quote']['05. price']) {
+                    return parseFloat(data['Global Quote']['05. price']);
+                }
+                
+                throw new Error('Price data not available');
+                
+            } catch (error) {
+                throw error;
+            }
+        }
+        
+        // Method 4: Using Finnhub (free tier)
+        async function fetchStockPriceViaFinnhub(symbol) {
+            try {
+                const apiKey = 'demo'; // Using demo key for free access
+                const url = `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`;
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.c && data.c > 0) {
+                    return data.c; // Current price
+                }
+                
+                throw new Error('Price data not available');
+                
+            } catch (error) {
+                throw error;
+            }
+        }
+
+        // Load data and initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize lightning toggle state
+            initializeLightningToggle();
+            
+            // Update runes background
+            updateRunesBackground();
+            
+            // Initialize calculations
+            calculateBuy();
+            calculateSell();
+        });
+    </script>
+</body>
+</html>
