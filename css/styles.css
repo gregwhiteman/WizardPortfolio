@@ -367,6 +367,12 @@ button {
   display: block;
 }
 
+/* Don't shrink the lightning-storm SVG inside the refresh button */
+.icon-btn .quote-storm-svg {
+  width: 100%;
+  height: 100%;
+}
+
 .icon-btn:active {
   background: var(--bg-row-hover);
   color: var(--accent-hover);
