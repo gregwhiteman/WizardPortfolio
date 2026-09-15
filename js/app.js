@@ -1498,6 +1498,11 @@ function recordPriceHistory(id, usd) {
     (p) => Number.isFinite(p?.t) && Number.isFinite(p?.usd) && p.usd > 0 && p.t >= since
   );
   const last = pts[pts.length - 1];
+  // Reject bogus API ticks that crash to a tiny fraction of the last good price
+  const ref = last?.usd > 0 ? last.usd : Number(store.lastQuotes?.[id]?.usd);
+  if (Number.isFinite(ref) && ref > 0) {
+    if (px < ref * 0.1 || px > ref * 10) return false;
+  }
   // Skip near-duplicate ticks to keep storage lean (refresh button / boot only)
   if (last && now - last.t < 20_000 && Math.abs(last.usd - px) < 1e-12) return false;
   pts.push({ t: now, usd: px });
@@ -1867,7 +1872,47 @@ async function fetchGeckoMarkets(ids, ticker = null) {
   return null;
 }
 
-/** Held relics that need a live quote, in list order. */
+/**
+ * US cash equities regular session: Mon–Fri 09:30–16:00 America/New_York.
+ * Used to skip stock/metal quote calls after hours and on weekends.
+ */
+function isUsEquityRegularHours(date = new Date()) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      weekday: "short",
+      hour: "numeric",
+      minute: "numeric",
+      hourCycle: "h23",
+    }).formatToParts(date);
+    const map = Object.fromEntries(
+      parts.filter((p) => p.type !== "literal").map((p) => [p.type, p.value])
+    );
+    const wd = map.weekday;
+    if (wd === "Sat" || wd === "Sun") return false;
+    const mins = Number(map.hour) * 60 + Number(map.minute);
+    return mins >= 9 * 60 + 30 && mins < 16 * 60;
+  } catch {
+    // If timezone APIs fail, allow quotes rather than blocking forever
+    return true;
+  }
+}
+
+/** Stocks / metals follow the US equity calendar; crypto quotes anytime. */
+function isMarketHoursSensitive(asset) {
+  if (!asset) return false;
+  if (asset.kind === "stock" || asset.kind === "metal") return true;
+  return !!(asset.yahooSymbol && !asset.geckoId);
+}
+
+function shouldFetchLiveQuote(asset) {
+  if (!asset || asset.id === "cash" || asset.kind === "cash") return false;
+  if (!asset.geckoId && !asset.yahooSymbol) return false;
+  if (isMarketHoursSensitive(asset) && !isUsEquityRegularHours()) return false;
+  return true;
+}
+
+/** Held relics that need a live quote right now, in list order. */
 function quoteRefreshAssets() {
   return allAssets().filter(
     (a) =>
@@ -1875,13 +1920,27 @@ function quoteRefreshAssets() {
       a.id !== "cash" &&
       a.kind !== "cash" &&
       isHeldAsset(a.id) &&
-      (a.geckoId || a.yahooSymbol)
+      (a.geckoId || a.yahooSymbol) &&
+      shouldFetchLiveQuote(a)
+  );
+}
+
+/** Held stocks/metals skipped because the US regular session is closed. */
+function quoteSkippedForMarketHours() {
+  if (isUsEquityRegularHours()) return [];
+  return allAssets().filter(
+    (a) =>
+      a &&
+      isHeldAsset(a.id) &&
+      isMarketHoursSensitive(a) &&
+      (a.yahooSymbol || a.kind === "stock" || a.kind === "metal")
   );
 }
 
 /** Fetch one relic's live quote (crypto, stock, or metal). */
 async function fetchAssetQuote(asset) {
   if (!asset || asset.id === "cash" || asset.kind === "cash") return null;
+  if (!shouldFetchLiveQuote(asset)) return null;
   let q = null;
   if (asset.yahooSymbol && (asset.kind === "stock" || asset.kind === "metal" || !asset.geckoId)) {
     q = await fetchStockQuote(asset.yahooSymbol);
@@ -2017,10 +2076,27 @@ function buildPortfolioSeries(holdings) {
       v += h.balance * px;
       ok = true;
     }
-    // Drop zero / empty totals — they flatten the 7-day omen
     if (ok && v > 0) out.push({ t, v });
   }
-  return { series: out, partial: failed > 0 || anyMissing, failed };
+  // Drop suspiciously low totals vs the series median (partial/bad ticks that crush the scale)
+  return {
+    series: filterSuspiciousLowSeries(out),
+    partial: failed > 0 || anyMissing,
+    failed,
+  };
+}
+
+/** Remove points far below the typical portfolio total (keeps partial coverage usable). */
+function filterSuspiciousLowSeries(series) {
+  const pts = (series || []).filter((p) => Number.isFinite(p?.t) && Number.isFinite(p?.v) && p.v > 0);
+  if (pts.length < 3) return pts;
+  const sorted = pts.map((p) => p.v).sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median =
+    sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  if (!(median > 0)) return pts;
+  // Keep points at least 25% of the median total
+  return pts.filter((p) => p.v >= median * 0.25);
 }
 
 /**
@@ -2495,7 +2571,12 @@ async function refreshAll() {
     }
 
     saveMarketSnapshot();
-    toast("Updated", "success");
+    const skipped = quoteSkippedForMarketHours();
+    if (skipped.length) {
+      toast("Updated · stocks/metals skipped (market closed)", "success");
+    } else {
+      toast("Updated", "success");
+    }
   } finally {
     setQuotingIds(quoting, false);
     refreshInFlight = false;
