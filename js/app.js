@@ -1469,7 +1469,7 @@ function normalizePriceHistory(raw) {
     if (!id || !Array.isArray(pts)) continue;
     const cleaned = pts
       .map((p) => ({ t: Number(p?.t), usd: Number(p?.usd) }))
-      .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.usd) && p.t >= since)
+      .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.usd) && p.usd > 0 && p.t >= since)
       .sort((a, b) => a.t - b.t);
     if (cleaned.length) out[id] = cleaned.slice(-PRICE_HISTORY_MAX);
   }
@@ -1488,12 +1488,15 @@ function isHeldAsset(id) {
 function recordPriceHistory(id, usd) {
   if (!id || id === "cash" || !isHeldAsset(id)) return false;
   const px = Number(usd);
-  if (!Number.isFinite(px)) return false;
+  // Zero / non-positive quotes warp the omen — never store them
+  if (!Number.isFinite(px) || px <= 0) return false;
   if (!store.priceHistory || typeof store.priceHistory !== "object") store.priceHistory = {};
   const now = Date.now();
   const since = now - PRICE_HISTORY_MS;
   let pts = Array.isArray(store.priceHistory[id]) ? store.priceHistory[id] : [];
-  pts = pts.filter((p) => Number.isFinite(p?.t) && Number.isFinite(p?.usd) && p.t >= since);
+  pts = pts.filter(
+    (p) => Number.isFinite(p?.t) && Number.isFinite(p?.usd) && p.usd > 0 && p.t >= since
+  );
   const last = pts[pts.length - 1];
   // Skip near-duplicate ticks to keep storage lean (refresh button / boot only)
   if (last && now - last.t < 20_000 && Math.abs(last.usd - px) < 1e-12) return false;
@@ -1935,7 +1938,13 @@ function historyPointsFor(coinId) {
   const pts = store.priceHistory?.[coinId];
   if (!Array.isArray(pts)) return [];
   return pts
-    .filter((p) => Number.isFinite(p?.t) && Number.isFinite(p?.usd) && p.t >= since)
+    .filter(
+      (p) =>
+        Number.isFinite(p?.t) &&
+        Number.isFinite(p?.usd) &&
+        p.usd > 0 &&
+        p.t >= since
+    )
     .map((p) => /** @type {[number, number]} */ ([p.t, p.usd]))
     .sort((a, b) => a[0] - b[0]);
 }
@@ -2001,14 +2010,15 @@ function buildPortfolioSeries(holdings) {
         continue;
       }
       const px = priceAtOrBefore(seriesByCoin[h.coinId], t);
-      if (px == null) {
+      if (px == null || !(px > 0)) {
         anyMissing = true;
         continue;
       }
       v += h.balance * px;
       ok = true;
     }
-    if (ok) out.push({ t, v });
+    // Drop zero / empty totals — they flatten the 7-day omen
+    if (ok && v > 0) out.push({ t, v });
   }
   return { series: out, partial: failed > 0 || anyMissing, failed };
 }
@@ -2020,7 +2030,9 @@ function buildPortfolioSeries(holdings) {
  */
 function renderSparkline(svg, series) {
   if (!svg) return false;
-  if (!series || series.length < 2) {
+  // Ignore zero / non-positive points so failed quotes don't crush the scale
+  const pts = (series || []).filter((p) => Number.isFinite(p?.t) && Number.isFinite(p?.v) && p.v > 0);
+  if (pts.length < 2) {
     svg.innerHTML = "";
     return false;
   }
@@ -2029,7 +2041,7 @@ function renderSparkline(svg, series) {
   const H = 96;
   const padX = 0;
   const padY = 6;
-  const vals = series.map((p) => p.v);
+  const vals = pts.map((p) => p.v);
   let min = Math.min(...vals);
   let max = Math.max(...vals);
   if (min === max) {
@@ -2040,28 +2052,28 @@ function renderSparkline(svg, series) {
       max = 1;
     }
   }
-  const first = series[0].v;
-  const last = series[series.length - 1].v;
+  const first = pts[0].v;
+  const last = pts[pts.length - 1].v;
   const up = last >= first;
   const stroke = up ? "#7dba5a" : "#d4543c";
   const fillId = `chartFill_${svg.id || "main"}`;
 
-  const tEnd = Math.max(series[series.length - 1].t, Date.now());
+  const tEnd = Math.max(pts[pts.length - 1].t, Date.now());
   const tStart = tEnd - PRICE_HISTORY_MS;
   const span = Math.max(1, tEnd - tStart);
   const xAtT = (t) => padX + ((Math.min(tEnd, Math.max(tStart, t)) - tStart) / span) * (W - padX * 2);
   const yAt = (v) => padY + (1 - (v - min) / (max - min)) * (H - padY * 2);
 
   let line = "";
-  for (let i = 0; i < series.length; i++) {
-    const x = xAtT(series[i].t);
-    const y = yAt(series[i].v);
+  for (let i = 0; i < pts.length; i++) {
+    const x = xAtT(pts[i].t);
+    const y = yAt(pts[i].v);
     line += i === 0 ? `M ${x.toFixed(2)} ${y.toFixed(2)}` : ` L ${x.toFixed(2)} ${y.toFixed(2)}`;
   }
   const yBase = H;
   const area =
     line +
-    ` L ${xAtT(series[series.length - 1].t).toFixed(2)} ${yBase} L ${xAtT(series[0].t).toFixed(2)} ${yBase} Z`;
+    ` L ${xAtT(pts[pts.length - 1].t).toFixed(2)} ${yBase} L ${xAtT(pts[0].t).toFixed(2)} ${yBase} Z`;
 
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.innerHTML = `
