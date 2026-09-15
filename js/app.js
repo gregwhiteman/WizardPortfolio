@@ -2078,25 +2078,65 @@ function buildPortfolioSeries(holdings) {
     }
     if (ok && v > 0) out.push({ t, v });
   }
-  // Drop suspiciously low totals vs the series median (partial/bad ticks that crush the scale)
   return {
-    series: filterSuspiciousLowSeries(out),
+    series: sanitizeChartSeries(out),
     partial: failed > 0 || anyMissing,
     failed,
   };
 }
 
-/** Remove points far below the typical portfolio total (keeps partial coverage usable). */
-function filterSuspiciousLowSeries(series) {
-  const pts = (series || []).filter((p) => Number.isFinite(p?.t) && Number.isFinite(p?.v) && p.v > 0);
-  if (pts.length < 3) return pts;
-  const sorted = pts.map((p) => p.v).sort((a, b) => a - b);
+function seriesMedian(vals) {
+  if (!vals.length) return 0;
+  const sorted = [...vals].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
-  const median =
-    sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/**
+ * When displaying the omen, walk the series and drop bad plots:
+ * zeros, far-below-median dips, far-above-median spikes, and isolated neighbor jumps.
+ */
+function sanitizeChartSeries(series) {
+  let pts = (series || [])
+    .filter((p) => Number.isFinite(p?.t) && Number.isFinite(p?.v) && p.v > 0)
+    .sort((a, b) => a.t - b.t);
+  if (pts.length < 3) return pts;
+
+  const median = seriesMedian(pts.map((p) => p.v));
   if (!(median > 0)) return pts;
-  // Keep points at least 25% of the median total
-  return pts.filter((p) => p.v >= median * 0.25);
+
+  // Pass 1: drop points far from the typical portfolio total
+  pts = pts.filter((p) => p.v >= median * 0.25 && p.v <= median * 4);
+  if (pts.length < 3) return pts;
+
+  // Pass 2: drop isolated spikes/dips vs immediate neighbors
+  const cleaned = [];
+  for (let i = 0; i < pts.length; i++) {
+    const prev = pts[i - 1];
+    const cur = pts[i];
+    const next = pts[i + 1];
+    if (!prev || !next) {
+      cleaned.push(cur);
+      continue;
+    }
+    const neighborMid = (prev.v + next.v) / 2;
+    if (!(neighborMid > 0)) {
+      cleaned.push(cur);
+      continue;
+    }
+    const vsNeighbors = cur.v / neighborMid;
+    const neighborsClose = Math.max(prev.v, next.v) / Math.min(prev.v, next.v) <= 1.35;
+    // Isolated bad tick: neighbors agree, this point is wildly off
+    if (neighborsClose && (vsNeighbors < 0.35 || vsNeighbors > 2.75)) continue;
+    cleaned.push(cur);
+  }
+
+  // Pass 3: re-check against median of the cleaned set
+  if (cleaned.length >= 3) {
+    const m2 = seriesMedian(cleaned.map((p) => p.v));
+    if (m2 > 0) return cleaned.filter((p) => p.v >= m2 * 0.25 && p.v <= m2 * 4);
+  }
+  return cleaned;
 }
 
 /**
@@ -2106,8 +2146,7 @@ function filterSuspiciousLowSeries(series) {
  */
 function renderSparkline(svg, series) {
   if (!svg) return false;
-  // Ignore zero / non-positive points so failed quotes don't crush the scale
-  const pts = (series || []).filter((p) => Number.isFinite(p?.t) && Number.isFinite(p?.v) && p.v > 0);
+  const pts = sanitizeChartSeries(series);
   if (pts.length < 2) {
     svg.innerHTML = "";
     return false;
