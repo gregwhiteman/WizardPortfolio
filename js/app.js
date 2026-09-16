@@ -5623,7 +5623,9 @@ function applyKirlianStrikeToElement(el, blastPower, hit = null) {
     void host.offsetWidth;
     host.classList.add("kirlian-hit-damage");
   } else {
-    // Permanent unless a green bolt lands near that scar / shatter origin
+    // Always flash a brief green highlight; only heal scars near the strike
+    flashKirlianGreenHighlight(host);
+
     const result = healScarMarksNear(marks, amount, rx, ry);
     marks = result.marks;
     dmg = Math.max(0, marks.reduce((s, m) => s + Math.round((m.power || 0.4) * 18), 0));
@@ -5635,17 +5637,25 @@ function applyKirlianStrikeToElement(el, blastPower, hit = null) {
     }
     if (!marks.length && !shattered) dmg = 0;
     if (!result.healed) {
-      // Strike missed existing damage — no mend flash
+      // Highlight already shown; damage stays permanent
       return;
     }
-    host.classList.remove("kirlian-hit-damage");
-    host.classList.remove("kirlian-hit-heal");
-    void host.offsetWidth;
-    host.classList.add("kirlian-hit-heal");
   }
 
   const saved = setElementDamageRecord(id, { dmg, marks, shattered, sx, sy });
   paintKirlianWoundVisual(host, saved);
+}
+
+/** Brief green glow on a struck element, then it fades away. */
+function flashKirlianGreenHighlight(el) {
+  if (!el) return;
+  el.classList.remove("kirlian-hit-damage");
+  el.classList.remove("kirlian-hit-heal");
+  void el.offsetWidth;
+  el.classList.add("kirlian-hit-heal");
+  const clear = () => el.classList.remove("kirlian-hit-heal");
+  el.addEventListener("animationend", clear, { once: true });
+  setTimeout(clear, 750);
 }
 
 /** Re-apply saved wounds after DOM rebuilds / page load. */
@@ -5658,7 +5668,7 @@ function restoreKirlianWounds() {
     if (el.hidden || el.id === "kirlian") continue;
     const id = assignKirlianElementId(el);
     const rec = getElementDamageRecord(id);
-    if (rec.dmg > 0 || rec.marks.length) paintKirlianWoundVisual(el, rec);
+    if (rec.dmg > 0 || rec.marks.length || rec.shattered) paintKirlianWoundVisual(el, rec);
   }
 }
 

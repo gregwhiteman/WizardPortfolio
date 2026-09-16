@@ -2814,7 +2814,7 @@ button.holding-row:active {
 }
 
 .kirlian-hit-heal {
-  animation: kirlian-mend 0.55s ease-out;
+  animation: kirlian-mend 0.7s ease-out;
 }
 
 .kirlian-hit-heal::before {
@@ -2824,8 +2824,11 @@ button.holding-row:active {
   border-radius: inherit;
   pointer-events: none;
   z-index: 5;
-  box-shadow: 0 0 16px rgba(70, 255, 130, 0.55), inset 0 0 10px rgba(90, 255, 150, 0.25);
-  animation: kirlian-mend-glow 0.55s ease-out;
+  border: 1.5px solid rgba(90, 255, 150, 0.85);
+  box-shadow:
+    0 0 18px rgba(70, 255, 130, 0.55),
+    inset 0 0 14px rgba(90, 255, 150, 0.28);
+  animation: kirlian-mend-glow 0.7s ease-out forwards;
 }
 
 @keyframes kirlian-shake {
@@ -2844,7 +2847,8 @@ button.holding-row:active {
 }
 
 @keyframes kirlian-mend-glow {
-  0% { opacity: 0.9; }
+  0% { opacity: 1; }
+  55% { opacity: 0.55; }
   100% { opacity: 0; }
 }
 
