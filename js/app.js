@@ -1317,12 +1317,18 @@ function isCorsBlockedFinanceUrl(url) {
   return /(?:query\d\.)?finance\.yahoo\.com|api\.nasdaq\.com/i.test(String(url || ""));
 }
 
+/** Sticky proxy rotation — start with the last one that worked. */
+let lastGoodProxyIndex = 0;
+
 function proxyUrls(url) {
-  return [
+  const all = [
     `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
     `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
     `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
   ];
+  if (!lastGoodProxyIndex) return all;
+  const i = lastGoodProxyIndex % all.length;
+  return [...all.slice(i), ...all.slice(0, i)];
 }
 
 /** Prefer the real upstream URL when the request goes through a CORS proxy. */
@@ -1369,11 +1375,15 @@ function unwrapJson(data) {
   return data;
 }
 
-async function fetchViaProxy(url, timeoutMs = 7000, ticker = "—") {
+async function fetchViaProxy(url, timeoutMs = 7000, ticker = "—", { maxProxies = 2 } = {}) {
   let lastErr;
-  for (const u of proxyUrls(url)) {
+  const urls = proxyUrls(url).slice(0, Math.max(1, maxProxies));
+  for (let i = 0; i < urls.length; i++) {
     try {
-      return unwrapJson(await fetchJsonRaw(u, {}, timeoutMs, ticker));
+      const data = unwrapJson(await fetchJsonRaw(urls[i], {}, timeoutMs, ticker));
+      // Remember which proxy slot succeeded (relative to rotated list)
+      lastGoodProxyIndex = (lastGoodProxyIndex + i) % 3;
+      return data;
     } catch (err) {
       lastErr = err;
     }
@@ -1732,27 +1742,23 @@ async function fetchStockQuote(symbol) {
   const sym = String(symbol || "").trim();
   if (!sym) return null;
   const enc = encodeURIComponent(sym);
-  // Yahoo does not allow browser CORS. Never fetch query1/query2 directly —
-  // that only produces console CORS errors. Use proxies, one at a time.
-  const yahooTargets = [
-    `https://query1.finance.yahoo.com/v8/finance/chart/${enc}?interval=1d&range=5d`,
-    `https://query2.finance.yahoo.com/v8/finance/chart/${enc}?interval=1d&range=5d`,
-  ];
-  for (const target of yahooTargets) {
-    try {
-      const data = await fetchViaProxy(target, 8000, sym);
-      const q = parseYahooChart(data);
-      if (q) return q;
-    } catch {
-      /* try next host/proxy */
-    }
+  // Yahoo blocks browser CORS — proxy only. Keep this short: one Yahoo host,
+  // at most 2 proxies, then a single Nasdaq fallback.
+  const yahoo = `https://query1.finance.yahoo.com/v8/finance/chart/${enc}?interval=1d&range=1d`;
+  try {
+    const data = await fetchViaProxy(yahoo, 4000, sym, { maxProxies: 2 });
+    const q = parseYahooChart(data);
+    if (q) return q;
+  } catch {
+    /* nasdaq next */
   }
   const ns = encodeURIComponent(sym.replace(/-/g, "."));
   try {
     const data = await fetchViaProxy(
       `https://api.nasdaq.com/api/quote/${ns}/info?assetclass=stocks`,
-      6000,
-      sym
+      3500,
+      sym,
+      { maxProxies: 1 }
     );
     const q = parseNasdaqInfo(data);
     if (q) return q;
@@ -1872,47 +1878,7 @@ async function fetchGeckoMarkets(ids, ticker = null) {
   return null;
 }
 
-/**
- * US cash equities regular session: Mon–Fri 09:30–16:00 America/New_York.
- * Used to skip stock/metal quote calls after hours and on weekends.
- */
-function isUsEquityRegularHours(date = new Date()) {
-  try {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/New_York",
-      weekday: "short",
-      hour: "numeric",
-      minute: "numeric",
-      hourCycle: "h23",
-    }).formatToParts(date);
-    const map = Object.fromEntries(
-      parts.filter((p) => p.type !== "literal").map((p) => [p.type, p.value])
-    );
-    const wd = map.weekday;
-    if (wd === "Sat" || wd === "Sun") return false;
-    const mins = Number(map.hour) * 60 + Number(map.minute);
-    return mins >= 9 * 60 + 30 && mins < 16 * 60;
-  } catch {
-    // If timezone APIs fail, allow quotes rather than blocking forever
-    return true;
-  }
-}
-
-/** Stocks / metals follow the US equity calendar; crypto quotes anytime. */
-function isMarketHoursSensitive(asset) {
-  if (!asset) return false;
-  if (asset.kind === "stock" || asset.kind === "metal") return true;
-  return !!(asset.yahooSymbol && !asset.geckoId);
-}
-
-function shouldFetchLiveQuote(asset) {
-  if (!asset || asset.id === "cash" || asset.kind === "cash") return false;
-  if (!asset.geckoId && !asset.yahooSymbol) return false;
-  if (isMarketHoursSensitive(asset) && !isUsEquityRegularHours()) return false;
-  return true;
-}
-
-/** Held relics that need a live quote right now, in list order. */
+/** Held relics that need a live quote, in list order. */
 function quoteRefreshAssets() {
   return allAssets().filter(
     (a) =>
@@ -1920,27 +1886,13 @@ function quoteRefreshAssets() {
       a.id !== "cash" &&
       a.kind !== "cash" &&
       isHeldAsset(a.id) &&
-      (a.geckoId || a.yahooSymbol) &&
-      shouldFetchLiveQuote(a)
-  );
-}
-
-/** Held stocks/metals skipped because the US regular session is closed. */
-function quoteSkippedForMarketHours() {
-  if (isUsEquityRegularHours()) return [];
-  return allAssets().filter(
-    (a) =>
-      a &&
-      isHeldAsset(a.id) &&
-      isMarketHoursSensitive(a) &&
-      (a.yahooSymbol || a.kind === "stock" || a.kind === "metal")
+      (a.geckoId || a.yahooSymbol)
   );
 }
 
 /** Fetch one relic's live quote (crypto, stock, or metal). */
 async function fetchAssetQuote(asset) {
   if (!asset || asset.id === "cash" || asset.kind === "cash") return null;
-  if (!shouldFetchLiveQuote(asset)) return null;
   let q = null;
   if (asset.yahooSymbol && (asset.kind === "stock" || asset.kind === "metal" || !asset.geckoId)) {
     q = await fetchStockQuote(asset.yahooSymbol);
@@ -1951,7 +1903,75 @@ async function fetchAssetQuote(asset) {
   return q && Number.isFinite(q.usd) ? q : null;
 }
 
-/** Refresh prices one held relic at a time (API calls are sequential). */
+function chunk(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+/** Batch crypto quotes in one CoinGecko call (fast path), CoinCap fallback. */
+async function fetchCryptoPricesBatch(next, cryptos) {
+  if (!cryptos?.length) return;
+  const ids = [...new Set(cryptos.map((c) => c.geckoId).filter(Boolean))];
+  let gotGecko = false;
+  for (const group of chunk(ids, 50)) {
+    const groupAssets = cryptos.filter((c) => group.includes(c.geckoId));
+    const rows = await fetchGeckoMarkets(group, tickerLabelForAssets(groupAssets));
+    if (!rows) continue;
+    gotGecko = true;
+    const byGecko = Object.fromEntries(rows.map((r) => [r.id, r]));
+    for (const coin of cryptos) {
+      const row = byGecko[coin.geckoId];
+      if (!row) continue;
+      const usd = Number(row.current_price);
+      if (!Number.isFinite(usd) || usd <= 0) continue;
+      next[coin.id] = {
+        usd,
+        change24h: Number(row.price_change_percentage_24h) || 0,
+      };
+      prices[coin.id] = next[coin.id];
+      freshQuoteIds.add(coin.id);
+    }
+  }
+  if (gotGecko) return;
+
+  // CoinCap batch fallback
+  const capIds = [
+    ...new Set(cryptos.map((c) => GECKO_TO_COINCAP[c.geckoId] || null).filter(Boolean)),
+  ];
+  if (!capIds.length) return;
+  try {
+    const data = await fetchJsonRaw(
+      `https://api.coincap.io/v2/assets?ids=${encodeURIComponent(capIds.join(","))}`,
+      {},
+      8000,
+      tickerLabelForAssets(cryptos)
+    );
+    const rows = data?.data;
+    if (!Array.isArray(rows)) return;
+    const byCap = Object.fromEntries(rows.map((r) => [r.id, r]));
+    for (const coin of cryptos) {
+      const capId = GECKO_TO_COINCAP[coin.geckoId];
+      const row = capId && byCap[capId];
+      if (!row) continue;
+      const usd = Number(row.priceUsd);
+      if (!Number.isFinite(usd) || usd <= 0) continue;
+      next[coin.id] = {
+        usd,
+        change24h: Number(row.changePercent24Hr) || 0,
+      };
+      prices[coin.id] = next[coin.id];
+      freshQuoteIds.add(coin.id);
+    }
+  } catch {
+    /* keep last quotes */
+  }
+}
+
+/**
+ * Refresh prices: batch crypto, then stocks/metals with limited concurrency.
+ * Shorter proxy chains so a dead proxy doesn't burn ~60s per ticker.
+ */
 async function fetchPrices() {
   freshQuoteIds = new Set(["cash"]);
   const next = { ...prices };
@@ -1961,22 +1981,47 @@ async function fetchPrices() {
     if (q && Number.isFinite(q.usd) && !next[id]) next[id] = q;
   }
 
-  for (const asset of quoteRefreshAssets()) {
-    try {
-      const q = await fetchAssetQuote(asset);
-      if (q) {
-        next[asset.id] = q;
-        prices[asset.id] = q;
-        freshQuoteIds.add(asset.id);
-      }
-    } catch {
-      /* keep last quote */
-    } finally {
-      // Clear lightning / rings on this relic as soon as its API call finishes
-      quotingIds.delete(asset.id);
-      paintAvatarQuoteState(asset.id);
+  const targets = quoteRefreshAssets();
+  const cryptos = targets.filter((a) => a.geckoId);
+  const stocks = targets.filter(
+    (a) => a.yahooSymbol && (a.kind === "stock" || a.kind === "metal" || !a.geckoId)
+  );
+
+  // Crypto: one (or few) market calls for the whole set
+  for (const c of cryptos) {
+    quotingIds.add(c.id);
+    paintAvatarQuoteState(c.id);
+  }
+  try {
+    await fetchCryptoPricesBatch(next, cryptos);
+  } finally {
+    for (const c of cryptos) {
+      quotingIds.delete(c.id);
+      paintAvatarQuoteState(c.id);
     }
   }
+
+  // Stocks/metals: a few at a time (not one-by-one with long proxy stacks)
+  await runPool(
+    stocks.map((asset) => async () => {
+      quotingIds.add(asset.id);
+      paintAvatarQuoteState(asset.id);
+      try {
+        const q = await fetchStockQuote(asset.yahooSymbol);
+        if (q && Number.isFinite(q.usd) && q.usd > 0) {
+          next[asset.id] = q;
+          prices[asset.id] = q;
+          freshQuoteIds.add(asset.id);
+        }
+      } catch {
+        /* keep last quote */
+      } finally {
+        quotingIds.delete(asset.id);
+        paintAvatarQuoteState(asset.id);
+      }
+    }),
+    3
+  );
 
   prices = next;
   rememberQuotes(next);
@@ -2606,16 +2651,11 @@ async function refreshAll() {
     updateGlobalSpinner();
     if (jobs.length) {
       render(); // loading flags on, values still from last snapshot
-      await runPool(jobs, 1);
+      await runPool(jobs, 3);
     }
 
     saveMarketSnapshot();
-    const skipped = quoteSkippedForMarketHours();
-    if (skipped.length) {
-      toast("Updated · stocks/metals skipped (market closed)", "success");
-    } else {
-      toast("Updated", "success");
-    }
+    toast("Updated", "success");
   } finally {
     setQuotingIds(quoting, false);
     refreshInFlight = false;
