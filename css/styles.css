@@ -2776,42 +2776,38 @@ button.holding-row:active {
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
 }
 
-.kirlian-scar-crack {
+/* Hard-hit: whole element reads as shattered glass */
+.kirlian-shattered {
+  filter: saturate(0.82) contrast(1.06) brightness(0.96);
+}
+
+.kirlian-shatter-overlay {
+  position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+  pointer-events: none;
+  z-index: 1;
 }
 
-.kirlian-scar-crack path {
+.kirlian-shatter-facets path {
+  fill: rgba(140, 170, 200, 0.06);
+  stroke: none;
+}
+
+.kirlian-shatter-lines path {
   fill: none;
+  stroke: rgba(28, 34, 42, 0.72);
+  stroke-width: 0.55;
   stroke-linecap: round;
   stroke-linejoin: round;
+  filter: drop-shadow(0 0 0.4px rgba(255, 255, 255, 0.15));
 }
 
-.kirlian-scar-crack .kirlian-crack-glow {
-  stroke: rgba(180, 210, 255, calc(0.22 + var(--p, 0.5) * 0.28));
-  stroke-width: calc(2.2 + var(--p, 0.5) * 2.4);
-  filter: blur(0.6px);
+.kirlian-shattered .kirlian-shatter-lines path:nth-child(odd) {
+  stroke: rgba(18, 22, 28, 0.8);
+  stroke-width: 0.7;
 }
-
-.kirlian-scar-crack .kirlian-crack-core {
-  stroke: rgba(235, 245, 255, calc(0.65 + var(--p, 0.5) * 0.3));
-  stroke-width: calc(0.55 + var(--p, 0.5) * 0.85);
-  filter: drop-shadow(0 0 0.6px rgba(255, 255, 255, 0.55));
-}
-
-.kirlian-scar-crack .kirlian-crack-rim {
-  stroke: rgba(200, 220, 240, calc(0.55 + var(--p, 0.5) * 0.35));
-  stroke-width: calc(1.1 + var(--p, 0.5) * 1.3);
-  filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.35));
-}
-
-.kirlian-scar-crack .kirlian-crack-chip {
-  stroke: rgba(170, 200, 230, calc(0.35 + var(--p, 0.5) * 0.3));
-  stroke-width: calc(0.45 + var(--p, 0.5) * 0.7);
-}
-
-/* No generic border highlight — only jagged crack scars show broken edges */
 
 .kirlian-hit-damage {
   animation: kirlian-shake 0.42s ease-out;

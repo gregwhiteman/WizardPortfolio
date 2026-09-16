@@ -5389,100 +5389,55 @@ function scarSeedRand(seed) {
   };
 }
 
-function crackPathsForMark(mark) {
-  const rand = scarSeedRand(((mark.rot * 97) | 0) + ((mark.x * 1000) | 0) * 13);
-  const x = mark.x * 100;
-  const y = mark.y * 100;
-  const edge = Math.min(mark.x, mark.y, 1 - mark.x, 1 - mark.y);
-  let side = "bottom";
-  let ex = x;
-  let ey = y;
-  if (mark.x <= edge + 0.001) {
-    side = "left";
-    ex = 0;
-  } else if (1 - mark.x <= edge + 0.001) {
-    side = "right";
-    ex = 100;
-  } else if (mark.y <= edge + 0.001) {
-    side = "top";
-    ey = 0;
-  } else {
-    side = "bottom";
-    ey = 100;
-  }
-
-  // Branching fracture spokes (main + side forks)
-  const branches = [];
-  const branchCount = 3 + Math.floor(mark.power * 3);
-  for (let b = 0; b < branchCount; b++) {
-    const ang =
-      Math.atan2(ey - y, ex - x) + (b === 0 ? 0 : (rand() - 0.5) * (0.9 + mark.power));
-    const len = (b === 0 ? 14 : 7) + mark.power * (b === 0 ? 22 : 14) * (0.55 + rand());
-    let cx = x;
-    let cy = y;
-    let d = `M ${cx.toFixed(1)} ${cy.toFixed(1)}`;
-    const steps = 4 + Math.floor(rand() * 3);
-    for (let i = 1; i <= steps; i++) {
-      const t = i / steps;
-      const wobble = (rand() - 0.5) * (2.2 + mark.power * 2);
+/** Full-element shattered glass overlay radiating from the hard-hit point. */
+function shatterOverlayMarkup(sx, sy, seedBase) {
+  const rand = scarSeedRand(((sx * 1000) | 0) * 17 + ((sy * 1000) | 0) * 31 + ((seedBase * 13) | 0));
+  const cx = sx * 100;
+  const cy = sy * 100;
+  const lines = [];
+  const shards = [];
+  const n = 10 + Math.floor(rand() * 5);
+  for (let i = 0; i < n; i++) {
+    const ang = (i / n) * Math.PI * 2 + (rand() - 0.5) * 0.35;
+    const len = 28 + rand() * 55;
+    let x0 = cx;
+    let y0 = cy;
+    let d = `M ${x0.toFixed(1)} ${y0.toFixed(1)}`;
+    const steps = 5 + Math.floor(rand() * 3);
+    for (let s = 1; s <= steps; s++) {
+      const t = s / steps;
+      const wob = (rand() - 0.5) * 4.5;
       const nx = -Math.sin(ang);
       const ny = Math.cos(ang);
-      cx = x + Math.cos(ang) * len * t + nx * wobble;
-      cy = y + Math.sin(ang) * len * t + ny * wobble;
-      d += ` L ${cx.toFixed(1)} ${cy.toFixed(1)}`;
-      if (i > 1 && i < steps && rand() > 0.55) {
-        const forkAng = ang + (rand() > 0.5 ? 1 : -1) * (0.4 + rand() * 0.7);
-        const fl = len * (0.18 + rand() * 0.28) * (1 - t);
-        const fx = cx + Math.cos(forkAng) * fl;
-        const fy = cy + Math.sin(forkAng) * fl;
-        branches.push(`M ${cx.toFixed(1)} ${cy.toFixed(1)} L ${fx.toFixed(1)} ${fy.toFixed(1)}`);
-      }
-    }
-    branches.unshift(d);
-  }
-
-  // Broken glass rim — irregular chip cut into the border
-  const span = 9 + mark.power * 16;
-  const jag = 2.2 + mark.power * 4.2;
-  const chips = [];
-  if (side === "left" || side === "right") {
-    const x0 = side === "left" ? 0 : 100;
-    const y0 = Math.max(1, Math.min(99, ey - span / 2));
-    const y1 = Math.max(1, Math.min(99, ey + span / 2));
-    const dir = side === "left" ? 1 : -1;
-    let rim = `M ${x0} ${y0.toFixed(1)}`;
-    const segs = 6 + Math.floor(mark.power * 4);
-    for (let i = 1; i <= segs; i++) {
-      const t = i / segs;
-      const yy = y0 + (y1 - y0) * t;
-      const depth = dir * jag * (0.35 + Math.sin(t * Math.PI) * (0.9 + rand() * 0.8) + (rand() - 0.5) * 0.55);
-      rim += ` L ${(x0 + depth).toFixed(1)} ${yy.toFixed(1)}`;
-      if (rand() > 0.65) {
-        chips.push(
-          `M ${(x0 + depth * 0.2).toFixed(1)} ${yy.toFixed(1)} L ${(x0 + depth * (0.55 + rand() * 0.4)).toFixed(1)} ${(yy + (rand() - 0.5) * 3).toFixed(1)}`
+      x0 = cx + Math.cos(ang) * len * t + nx * wob;
+      y0 = cy + Math.sin(ang) * len * t + ny * wob;
+      d += ` L ${Math.max(-5, Math.min(105, x0)).toFixed(1)} ${Math.max(-5, Math.min(105, y0)).toFixed(1)}`;
+      if (s > 1 && s < steps && rand() > 0.45) {
+        const fa = ang + (rand() > 0.5 ? 1 : -1) * (0.35 + rand() * 0.85);
+        const fl = len * (0.12 + rand() * 0.22) * (1 - t);
+        lines.push(
+          `M ${x0.toFixed(1)} ${y0.toFixed(1)} L ${(x0 + Math.cos(fa) * fl).toFixed(1)} ${(y0 + Math.sin(fa) * fl).toFixed(1)}`
         );
       }
     }
-    return { spokes: branches.join(" "), rim, chips: chips.join(" ") };
+    lines.push(d);
   }
-  const y0 = side === "top" ? 0 : 100;
-  const x0 = Math.max(1, Math.min(99, ex - span / 2));
-  const x1 = Math.max(1, Math.min(99, ex + span / 2));
-  const dir = side === "top" ? 1 : -1;
-  let rim = `M ${x0.toFixed(1)} ${y0}`;
-  const segs = 6 + Math.floor(mark.power * 4);
-  for (let i = 1; i <= segs; i++) {
-    const t = i / segs;
-    const xx = x0 + (x1 - x0) * t;
-    const depth = dir * jag * (0.35 + Math.sin(t * Math.PI) * (0.9 + rand() * 0.8) + (rand() - 0.5) * 0.55);
-    rim += ` L ${xx.toFixed(1)} ${(y0 + depth).toFixed(1)}`;
-    if (rand() > 0.65) {
-      chips.push(
-        `M ${xx.toFixed(1)} ${(y0 + depth * 0.2).toFixed(1)} L ${(xx + (rand() - 0.5) * 3).toFixed(1)} ${(y0 + depth * (0.55 + rand() * 0.4)).toFixed(1)}`
-      );
-    }
+  // Faint shard facets
+  for (let i = 0; i < 5; i++) {
+    const a0 = rand() * Math.PI * 2;
+    const a1 = a0 + 0.4 + rand() * 0.7;
+    const a2 = a0 - 0.3 - rand() * 0.5;
+    const r0 = 12 + rand() * 40;
+    const r1 = 10 + rand() * 36;
+    const r2 = 8 + rand() * 30;
+    shards.push(
+      `M ${(cx + Math.cos(a0) * r0).toFixed(1)} ${(cy + Math.sin(a0) * r0).toFixed(1)} L ${(cx + Math.cos(a1) * r1).toFixed(1)} ${(cy + Math.sin(a1) * r1).toFixed(1)} L ${(cx + Math.cos(a2) * r2).toFixed(1)} ${(cy + Math.sin(a2) * r2).toFixed(1)} Z`
+    );
   }
-  return { spokes: branches.join(" "), rim, chips: chips.join(" ") };
+  return `<svg class="kirlian-shatter-overlay" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+    <g class="kirlian-shatter-facets">${shards.map((d) => `<path d="${d}" />`).join("")}</g>
+    <g class="kirlian-shatter-lines">${lines.map((d) => `<path d="${d}" />`).join("")}</g>
+  </svg>`;
 }
 
 function burnSvgMarkup(mark) {
@@ -5546,7 +5501,19 @@ function holeSvgMarkup(mark) {
 
 function renderScarLayer(host, marks) {
   let layer = host.querySelector(":scope > .kirlian-scar-layer");
-  if (!marks.length) {
+  const shattered = host.classList.contains("kirlian-shattered");
+  const scars = (marks || [])
+    .filter((m) => m.kind === "hole" || m.kind === "burn")
+    .map((m) => (m.kind === "hole" ? holeSvgMarkup(m) : burnSvgMarkup(m)))
+    .join("");
+  const shatter = shattered
+    ? shatterOverlayMarkup(
+        Number(host.dataset.kirlianSx) || 0.5,
+        Number(host.dataset.kirlianSy) || 0.5,
+        (host.dataset.kirlianId || "").length || 1
+      )
+    : "";
+  if (!scars && !shatter) {
     layer?.remove();
     return;
   }
@@ -5556,21 +5523,7 @@ function renderScarLayer(host, marks) {
     layer.setAttribute("aria-hidden", "true");
     host.appendChild(layer);
   }
-  layer.innerHTML = marks
-    .map((m) => {
-      if (m.kind === "crack") {
-        const paths = crackPathsForMark(m);
-        return `<svg class="kirlian-scar kirlian-scar-crack" viewBox="0 0 100 100" preserveAspectRatio="none" style="--p:${m.power.toFixed(2)}">
-          <path class="kirlian-crack-glow" d="${paths.spokes}" />
-          <path class="kirlian-crack-core" d="${paths.spokes}" />
-          <path class="kirlian-crack-rim" d="${paths.rim}" />
-          ${paths.chips ? `<path class="kirlian-crack-chip" d="${paths.chips}" />` : ""}
-        </svg>`;
-      }
-      if (m.kind === "hole") return holeSvgMarkup(m);
-      return burnSvgMarkup(m);
-    })
-    .join("");
+  layer.innerHTML = shatter + scars;
 }
 
 function paintKirlianWoundVisual(el, rec) {
@@ -5578,13 +5531,22 @@ function paintKirlianWoundVisual(el, rec) {
   if (!host) return;
   const dmg = Math.max(0, Math.min(100, Math.round(Number(rec?.dmg) || 0)));
   const marks = Array.isArray(rec?.marks) ? rec.marks.map(normalizeScarMark).filter(Boolean) : [];
-  const wounded = dmg > 0 || marks.length > 0;
+  const shattered = !!rec?.shattered;
+  const wounded = dmg > 0 || marks.length > 0 || shattered;
   host.classList.toggle("kirlian-wounded", wounded);
+  host.classList.toggle("kirlian-shattered", shattered);
+  if (shattered) {
+    host.dataset.kirlianSx = String(rec.sx ?? 0.5);
+    host.dataset.kirlianSy = String(rec.sy ?? 0.5);
+  } else {
+    delete host.dataset.kirlianSx;
+    delete host.dataset.kirlianSy;
+  }
   if (wounded) host.style.setProperty("--kirlian-dmg", (Math.max(dmg, marks.length * 8) / 100).toFixed(3));
   else host.style.removeProperty("--kirlian-dmg");
   renderScarLayer(host, marks);
   if (!wounded) {
-    host.classList.remove("kirlian-wounded");
+    host.classList.remove("kirlian-wounded", "kirlian-shattered");
     host.querySelector(":scope > .kirlian-scar-layer")?.remove();
   }
 }
@@ -5636,7 +5598,7 @@ function applyKirlianStrikeToElement(el, blastPower, hit = null) {
   const id = assignKirlianElementId(host);
   const amount = kirlianStrikeAmount(blastPower);
   const rec = getElementDamageRecord(id);
-  let { dmg, marks } = rec;
+  let { dmg, marks, shattered, sx, sy } = rec;
   marks = marks.map(normalizeScarMark).filter(Boolean);
   const rx = Number.isFinite(hit?.rx) ? hit.rx : 0.2 + Math.random() * 0.6;
   const ry = Number.isFinite(hit?.ry) ? hit.ry : 0.2 + Math.random() * 0.6;
@@ -5651,16 +5613,27 @@ function applyKirlianStrikeToElement(el, blastPower, hit = null) {
       rot: Math.random() * 360,
     });
     marks = marks.slice(-12);
+    if (isHardGlassStrike(amount, blastPower)) {
+      shattered = true;
+      sx = rx;
+      sy = ry;
+    }
     host.classList.remove("kirlian-hit-heal");
     host.classList.remove("kirlian-hit-damage");
     void host.offsetWidth;
     host.classList.add("kirlian-hit-damage");
   } else {
-    // Permanent unless a green bolt lands near that scar
+    // Permanent unless a green bolt lands near that scar / shatter origin
     const result = healScarMarksNear(marks, amount, rx, ry);
     marks = result.marks;
     dmg = Math.max(0, marks.reduce((s, m) => s + Math.round((m.power || 0.4) * 18), 0));
     dmg = Math.min(100, dmg);
+    // Mend shatter only if the green strike is near the shatter origin
+    if (shattered && Math.hypot(rx - sx, ry - sy) <= 0.32) {
+      shattered = false;
+      result.healed = Math.max(result.healed, 1);
+    }
+    if (!marks.length && !shattered) dmg = 0;
     if (!result.healed) {
       // Strike missed existing damage — no mend flash
       return;
@@ -5671,7 +5644,7 @@ function applyKirlianStrikeToElement(el, blastPower, hit = null) {
     host.classList.add("kirlian-hit-heal");
   }
 
-  const saved = setElementDamageRecord(id, { dmg, marks });
+  const saved = setElementDamageRecord(id, { dmg, marks, shattered, sx, sy });
   paintKirlianWoundVisual(host, saved);
 }
 
@@ -5720,28 +5693,8 @@ function pickKirlianTargets(fromX, fromY, count) {
   }
   return pool.slice(0, Math.max(1, Math.min(count, pool.length))).map((item, i) => {
     const { el, r } = item;
-    // Bias some hits to the rim so glass cracks appear, others inland for burns/holes
-    let rx;
-    let ry;
-    if (Math.random() < 0.42) {
-      const edge = Math.floor(Math.random() * 4);
-      if (edge === 0) {
-        rx = 0.04 + Math.random() * 0.1;
-        ry = 0.12 + Math.random() * 0.76;
-      } else if (edge === 1) {
-        rx = 0.86 + Math.random() * 0.1;
-        ry = 0.12 + Math.random() * 0.76;
-      } else if (edge === 2) {
-        rx = 0.12 + Math.random() * 0.76;
-        ry = 0.04 + Math.random() * 0.1;
-      } else {
-        rx = 0.12 + Math.random() * 0.76;
-        ry = 0.86 + Math.random() * 0.1;
-      }
-    } else {
-      rx = 0.22 + Math.random() * 0.56;
-      ry = 0.22 + Math.random() * 0.56;
-    }
+    const rx = 0.18 + Math.random() * 0.64;
+    const ry = 0.18 + Math.random() * 0.64;
     const thick = Math.random();
     const pt = toPortraitPoint(r.left + r.width * rx, r.top + r.height * ry);
     return {
