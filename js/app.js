@@ -772,6 +772,7 @@ function defaultStore() {
     priceHistory: {},
     assetRisk: {},
     futurePrices: {},
+    elementDamage: {},
     portfolios: [
       {
         id,
@@ -794,7 +795,50 @@ function normalizeLoadedStore(parsed) {
   parsed.priceHistory = normalizePriceHistory(parsed.priceHistory);
   parsed.assetRisk = normalizeAssetRiskMap(parsed.assetRisk);
   parsed.futurePrices = normalizeFuturePrices(parsed.futurePrices);
+  parsed.elementDamage = normalizeElementDamage(parsed.elementDamage);
   return parsed;
+}
+
+/**
+ * Map of stable UI element ids → { dmg, marks[] }.
+ * Marks are burns / holes / glass cracks at the strike point (0–1 coords).
+ */
+function normalizeElementDamage(raw) {
+  const out = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [id, v] of Object.entries(raw)) {
+    const key = String(id || "").trim().slice(0, 160);
+    if (!key) continue;
+    // Legacy: bare number
+    if (typeof v === "number" || typeof v === "string") {
+      const dmg = Math.round(Number(v));
+      if (!Number.isFinite(dmg) || dmg <= 0) continue;
+      out[key] = { dmg: Math.min(100, dmg), marks: [] };
+      continue;
+    }
+    if (!v || typeof v !== "object") continue;
+    const dmg = Math.min(100, Math.max(0, Math.round(Number(v.dmg) || 0)));
+    const marks = Array.isArray(v.marks)
+      ? v.marks
+          .map((m) => normalizeScarMark(m))
+          .filter(Boolean)
+          .slice(-12)
+      : [];
+    if (dmg <= 0 && !marks.length) continue;
+    out[key] = { dmg: dmg || Math.min(100, marks.length * 8), marks };
+  }
+  return out;
+}
+
+function normalizeScarMark(m) {
+  if (!m || typeof m !== "object") return null;
+  const x = Math.max(0.02, Math.min(0.98, Number(m.x)));
+  const y = Math.max(0.02, Math.min(0.98, Number(m.y)));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  const kind = m.kind === "hole" || m.kind === "crack" || m.kind === "burn" ? m.kind : "burn";
+  const power = Math.max(0.15, Math.min(1, Number(m.power) || 0.4));
+  const rot = Number.isFinite(Number(m.rot)) ? Number(m.rot) : Math.random() * 360;
+  return { x, y, kind, power, rot };
 }
 
 function probeLocalStorage() {
@@ -939,6 +983,7 @@ function loadStore() {
         priceHistory: {},
         assetRisk: {},
         futurePrices: {},
+        elementDamage: {},
         version: 2,
         activePortfolioId: id,
         portfolios: [{ id, name: "Main", createdAt: Date.now(), includeInTotal: true, holdings }],
@@ -2782,6 +2827,8 @@ function render() {
     renderTvChart();
   }
   if (nav.view !== "home") syncWizardFilm();
+  // Re-paint saved lightning wounds after DOM rebuild
+  restoreKirlianWounds();
 }
 
 function renderTvChart() {
@@ -4835,6 +4882,9 @@ function importData(file) {
         futurePrices: normalizeFuturePrices(
           data.futurePrices != null ? data.futurePrices : store.futurePrices
         ),
+        elementDamage: normalizeElementDamage(
+          data.elementDamage != null ? data.elementDamage : store.elementDamage
+        ),
         portfolios: data.portfolios.map(normalizePortfolio),
       };
       if (!store.portfolios.length) store = defaultStore();
@@ -5200,6 +5250,265 @@ function drawKirlianBranch(ctx, x, y, ang, len, width, depth, seed, pal, forkCha
   }
 }
 
+/** Green heals, red damages; gold/flat does neither. */
+function kirlianStrikeKind() {
+  const { changeUsd, totalUsd } = allPortfoliosTotals();
+  if (changeUsd > 0 && totalUsd > 0) return "heal";
+  if (changeUsd < 0) return "damage";
+  return "neutral";
+}
+
+/** Strike strength from Lightning Power (0–100) and charge-up (0–1). */
+function kirlianStrikeAmount(blastPower) {
+  const level = getLightningPower();
+  const charge = Math.max(0, Math.min(1, Number(blastPower) || 0));
+  return Math.max(1, Math.round((1 + level * 0.15) * (0.35 + charge * 1.65)));
+}
+
+/** Stable id for a UI node so wounds survive reloads in localStorage. */
+function assignKirlianElementId(el) {
+  if (!el) return "";
+  if (el.dataset.kirlianId) return el.dataset.kirlianId;
+  const view =
+    el.closest("[data-view]")?.dataset.view ||
+    el.closest(".home-pane")?.id ||
+    "app";
+  const slide = el.closest("[data-home-slide]")?.dataset.homeSlide ?? "";
+  const tag = el.tagName.toLowerCase();
+  const meaningful = [...el.classList]
+    .filter((c) => !/^kirlian-|^is-|^up$|^down$|^neutral$|^tone-/.test(c))
+    .slice(0, 5)
+    .join(".");
+  const keyEl = el.querySelector?.(".holding-name, .pf-card-name, .coin-avatar-sym, .risk-row-name, .buysell-title");
+  const key =
+    el.id ||
+    el.dataset.openTv ||
+    el.dataset.pfId ||
+    el.dataset.futureEdit ||
+    el.getAttribute("aria-label") ||
+    keyEl?.textContent ||
+    el.textContent;
+  const compact = String(key || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 48);
+  let idx = 0;
+  if (el.parentElement) {
+    const sibs = [...el.parentElement.children].filter(
+      (c) => c.tagName === el.tagName && c.className === el.className
+    );
+    idx = Math.max(0, sibs.indexOf(el));
+  }
+  const raw = `${view}|${slide}|${tag}|${meaningful}|${compact}|${idx}`;
+  const id = raw.toLowerCase().replace(/[^a-z0-9|._:-]+/g, "_").slice(0, 160);
+  el.dataset.kirlianId = id;
+  return id;
+}
+
+function getElementDamageRecord(id) {
+  if (!id || !store?.elementDamage) return { dmg: 0, marks: [] };
+  const raw = store.elementDamage[id];
+  if (raw == null) return { dmg: 0, marks: [] };
+  if (typeof raw === "number" || typeof raw === "string") {
+    const dmg = Math.min(100, Math.max(0, Math.round(Number(raw) || 0)));
+    return { dmg, marks: [] };
+  }
+  const dmg = Math.min(100, Math.max(0, Math.round(Number(raw.dmg) || 0)));
+  const marks = Array.isArray(raw.marks) ? raw.marks.map(normalizeScarMark).filter(Boolean) : [];
+  return { dmg, marks };
+}
+
+function getElementDamage(id) {
+  return getElementDamageRecord(id).dmg;
+}
+
+function setElementDamageRecord(id, rec) {
+  if (!store.elementDamage || typeof store.elementDamage !== "object") store.elementDamage = {};
+  const dmg = Math.max(0, Math.min(100, Math.round(Number(rec?.dmg) || 0)));
+  const marks = Array.isArray(rec?.marks)
+    ? rec.marks.map(normalizeScarMark).filter(Boolean).slice(-12)
+    : [];
+  if (dmg <= 0 && !marks.length) delete store.elementDamage[id];
+  else store.elementDamage[id] = { dmg: dmg || Math.min(100, marks.length * 8), marks };
+  saveStore();
+  return store.elementDamage[id] || { dmg: 0, marks: [] };
+}
+
+/** Pick scar type from where the bolt hit on the element. */
+function scarKindFromHit(rx, ry, amount) {
+  const edge = Math.min(rx, ry, 1 - rx, 1 - ry);
+  if (edge < 0.16) return "crack";
+  if (amount >= 14 || (edge > 0.32 && amount >= 9)) return "hole";
+  return "burn";
+}
+
+function ensureKirlianWoundHost(el) {
+  if (!el || !el.isConnected) return null;
+  const pos = window.getComputedStyle(el).position;
+  if (pos === "static") el.classList.add("kirlian-wound-host");
+  assignKirlianElementId(el);
+  return el;
+}
+
+function crackPathForMark(mark) {
+  // Jagged glass fracture radiating from the strike toward the nearest edge
+  const x = mark.x * 100;
+  const y = mark.y * 100;
+  const edge = Math.min(mark.x, mark.y, 1 - mark.x, 1 - mark.y);
+  let ex = x;
+  let ey = y;
+  if (mark.x <= edge + 0.001) ex = 0;
+  else if (1 - mark.x <= edge + 0.001) ex = 100;
+  else if (mark.y <= edge + 0.001) ey = 0;
+  else ey = 100;
+  const mx = (x + ex) / 2 + (mark.rot % 13) - 6;
+  const my = (y + ey) / 2 + (mark.power * 10 - 5);
+  const s = 4 + mark.power * 10;
+  return `M ${x.toFixed(1)} ${y.toFixed(1)} L ${(x + s).toFixed(1)} ${(y - s * 0.4).toFixed(1)} L ${mx.toFixed(1)} ${my.toFixed(1)} L ${(ex + (y - ey) * 0.08).toFixed(1)} ${(ey + (x - ex) * 0.08).toFixed(1)} M ${x.toFixed(1)} ${y.toFixed(1)} L ${(x - s * 0.7).toFixed(1)} ${(y + s * 0.5).toFixed(1)} L ${(mx - 3).toFixed(1)} ${(my + 4).toFixed(1)}`;
+}
+
+function renderScarLayer(host, marks) {
+  let layer = host.querySelector(":scope > .kirlian-scar-layer");
+  if (!marks.length) {
+    layer?.remove();
+    return;
+  }
+  if (!layer) {
+    layer = document.createElement("div");
+    layer.className = "kirlian-scar-layer";
+    layer.setAttribute("aria-hidden", "true");
+    host.appendChild(layer);
+  }
+  layer.innerHTML = marks
+    .map((m) => {
+      const size = `${(18 + m.power * 34).toFixed(1)}%`;
+      if (m.kind === "crack") {
+        return `<svg class="kirlian-scar kirlian-scar-crack" viewBox="0 0 100 100" preserveAspectRatio="none" style="--p:${m.power.toFixed(2)}"><path d="${crackPathForMark(m)}" /></svg>`;
+      }
+      if (m.kind === "hole") {
+        return `<span class="kirlian-scar kirlian-scar-hole" style="left:${(m.x * 100).toFixed(1)}%;top:${(m.y * 100).toFixed(1)}%;width:${size};height:${size};--p:${m.power.toFixed(2)};--rot:${m.rot.toFixed(0)}deg"></span>`;
+      }
+      return `<span class="kirlian-scar kirlian-scar-burn" style="left:${(m.x * 100).toFixed(1)}%;top:${(m.y * 100).toFixed(1)}%;width:${size};height:${size};--p:${m.power.toFixed(2)};--rot:${m.rot.toFixed(0)}deg"></span>`;
+    })
+    .join("");
+}
+
+function paintKirlianWoundVisual(el, rec) {
+  const host = ensureKirlianWoundHost(el);
+  if (!host) return;
+  const dmg = Math.max(0, Math.min(100, Math.round(Number(rec?.dmg) || 0)));
+  const marks = Array.isArray(rec?.marks) ? rec.marks.map(normalizeScarMark).filter(Boolean) : [];
+  const wounded = dmg > 0 || marks.length > 0;
+  host.classList.toggle("kirlian-wounded", wounded);
+  if (wounded) host.style.setProperty("--kirlian-dmg", (Math.max(dmg, marks.length * 8) / 100).toFixed(3));
+  else host.style.removeProperty("--kirlian-dmg");
+  renderScarLayer(host, marks);
+  if (!wounded) {
+    host.classList.remove("kirlian-wounded");
+    host.querySelector(":scope > .kirlian-scar-layer")?.remove();
+  }
+}
+
+/**
+ * Green heal only affects scars near the strike point.
+ * Returns { marks, healed } — distant damage stays permanent.
+ */
+function healScarMarksNear(marks, healAmount, hx, hy) {
+  const radius = 0.28; // ~28% of element size
+  let left = healAmount;
+  let healed = 0;
+  const out = [];
+  // Closest-first among marks inside the heal radius
+  const indexed = marks.map((m, i) => ({ m, i, d: Math.hypot(m.x - hx, m.y - hy) }));
+  indexed.sort((a, b) => a.d - b.d);
+  const drop = new Set();
+  const weaken = new Map();
+  for (const item of indexed) {
+    if (left <= 0) break;
+    if (item.d > radius) continue;
+    const cost = Math.max(1, Math.round((item.m.power || 0.4) * 18));
+    if (left >= cost) {
+      drop.add(item.i);
+      left -= cost;
+      healed += cost;
+    } else {
+      const nextPower = Math.max(0.15, item.m.power * (1 - left / cost));
+      weaken.set(item.i, nextPower);
+      healed += left;
+      left = 0;
+    }
+  }
+  for (let i = 0; i < marks.length; i++) {
+    if (drop.has(i)) continue;
+    if (weaken.has(i)) out.push({ ...marks[i], power: weaken.get(i) });
+    else out.push(marks[i]);
+  }
+  return { marks: out, healed };
+}
+
+/** Apply red damage or green heal when a bolt lands on an element. */
+function applyKirlianStrikeToElement(el, blastPower, hit = null) {
+  const host = ensureKirlianWoundHost(el);
+  if (!host) return;
+  const kind = kirlianStrikeKind();
+  if (kind === "neutral") return;
+
+  const id = assignKirlianElementId(host);
+  const amount = kirlianStrikeAmount(blastPower);
+  const rec = getElementDamageRecord(id);
+  let { dmg, marks } = rec;
+  marks = marks.map(normalizeScarMark).filter(Boolean);
+  const rx = Number.isFinite(hit?.rx) ? hit.rx : 0.2 + Math.random() * 0.6;
+  const ry = Number.isFinite(hit?.ry) ? hit.ry : 0.2 + Math.random() * 0.6;
+
+  if (kind === "damage") {
+    dmg = Math.min(100, dmg + amount);
+    marks.push({
+      x: rx,
+      y: ry,
+      kind: scarKindFromHit(rx, ry, amount),
+      power: Math.max(0.2, Math.min(1, amount / 28)),
+      rot: Math.random() * 360,
+    });
+    marks = marks.slice(-12);
+    host.classList.remove("kirlian-hit-heal");
+    host.classList.remove("kirlian-hit-damage");
+    void host.offsetWidth;
+    host.classList.add("kirlian-hit-damage");
+  } else {
+    // Permanent unless a green bolt lands near that scar
+    const result = healScarMarksNear(marks, amount, rx, ry);
+    marks = result.marks;
+    dmg = Math.max(0, marks.reduce((s, m) => s + Math.round((m.power || 0.4) * 18), 0));
+    dmg = Math.min(100, dmg);
+    if (!result.healed) {
+      // Strike missed existing damage — no mend flash
+      return;
+    }
+    host.classList.remove("kirlian-hit-damage");
+    host.classList.remove("kirlian-hit-heal");
+    void host.offsetWidth;
+    host.classList.add("kirlian-hit-heal");
+  }
+
+  const saved = setElementDamageRecord(id, { dmg, marks });
+  paintKirlianWoundVisual(host, saved);
+}
+
+/** Re-apply saved wounds after DOM rebuilds / page load. */
+function restoreKirlianWounds() {
+  if (!store?.elementDamage || !Object.keys(store.elementDamage).length) return;
+  const nodes = document.querySelectorAll(
+    "#app .view.view-active div, #app .view.view-active button, #app .view.view-active h2, #app .holding-row, #app .summary-card, #app .pf-card, #app .settings-group, #app .topbar, #app .brand, #app .coin-avatar, #app .field-input, .modal.sheet, #app .home-pane div, #app .home-pane button"
+  );
+  for (const el of nodes) {
+    if (el.hidden || el.id === "kirlian") continue;
+    const id = assignKirlianElementId(el);
+    const rec = getElementDamageRecord(id);
+    if (rec.dmg > 0 || rec.marks.length) paintKirlianWoundVisual(el, rec);
+  }
+}
+
 function pickKirlianTargets(fromX, fromY, count) {
   const skipRe =
     /^(app|views|view|view-active|view-home|home-pager|home-track|home-pane|holdings-list|portfolio-list|address-list|coin-pick-list|risk-list|future-list|codex-menu|wizard-hud|kirlian-canvas)$/;
@@ -5222,21 +5531,45 @@ function pickKirlianTargets(fromX, fromY, count) {
     if (r.bottom < 8 || r.right < 8 || r.top > window.innerHeight - 8 || r.left > window.innerWidth - 8) continue;
     const mid = toPortraitPoint(r.left + r.width / 2, r.top + r.height / 2);
     if (Math.hypot(mid.x - fromX, mid.y - fromY) < 48) continue;
-    pool.push(r);
+    pool.push({ el, r });
   }
   if (!pool.length) return [];
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
-  return pool.slice(0, Math.max(1, Math.min(count, pool.length))).map((r, i) => {
-    const rx = 0.18 + Math.random() * 0.64;
-    const ry = 0.18 + Math.random() * 0.64;
+  return pool.slice(0, Math.max(1, Math.min(count, pool.length))).map((item, i) => {
+    const { el, r } = item;
+    // Bias some hits to the rim so glass cracks appear, others inland for burns/holes
+    let rx;
+    let ry;
+    if (Math.random() < 0.42) {
+      const edge = Math.floor(Math.random() * 4);
+      if (edge === 0) {
+        rx = 0.04 + Math.random() * 0.1;
+        ry = 0.12 + Math.random() * 0.76;
+      } else if (edge === 1) {
+        rx = 0.86 + Math.random() * 0.1;
+        ry = 0.12 + Math.random() * 0.76;
+      } else if (edge === 2) {
+        rx = 0.12 + Math.random() * 0.76;
+        ry = 0.04 + Math.random() * 0.1;
+      } else {
+        rx = 0.12 + Math.random() * 0.76;
+        ry = 0.86 + Math.random() * 0.1;
+      }
+    } else {
+      rx = 0.22 + Math.random() * 0.56;
+      ry = 0.22 + Math.random() * 0.56;
+    }
     const thick = Math.random();
     const pt = toPortraitPoint(r.left + r.width * rx, r.top + r.height * ry);
     return {
+      el,
       x: pt.x,
       y: pt.y,
+      rx,
+      ry,
       left: r.left,
       top: r.top,
       width: r.width,
@@ -5244,6 +5577,7 @@ function pickKirlianTargets(fromX, fromY, count) {
       seed: (Math.random() * 1e9) | 0,
       delay: i * 0.08,
       thick,
+      resolved: false,
     };
   });
 }
@@ -5500,6 +5834,11 @@ function drawKirlianContact(ctx, t, pal, tick, screenW, screenH, power01) {
       const hit = t.targets[i];
       const age = span - t.strikeLife - hit.delay;
       if (age < 0) continue;
+      // Resolve damage/heal once when the bolt first lands
+      if (!hit.resolved) {
+        hit.resolved = true;
+        if (hit.el) applyKirlianStrikeToElement(hit.el, t.blastPower || charge, hit);
+      }
       const boltFade = Math.max(0, 1 - age / 0.5);
       const residFade = Math.max(0, 1 - age / 1.2);
       const seed = (hit.seed + Math.floor(age * 8) * 17) | 0;
