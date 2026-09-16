@@ -32,6 +32,45 @@ function toPortraitPoint(clientX, clientY) {
   return { x: clientY, y: window.innerWidth - clientX };
 }
 
+function fromPortraitPoint(px, py) {
+  const mode = document.documentElement.dataset.forcePortrait;
+  if (!mode) return { x: px, y: py };
+  if (mode === "cw") return { x: py, y: window.innerHeight - px };
+  return { x: window.innerWidth - py, y: px };
+}
+
+/** Find a woundable UI node under a portrait-space point. */
+function kirlianElementAtPortrait(px, py) {
+  const c = fromPortraitPoint(px, py);
+  const stack = document.elementsFromPoint?.(c.x, c.y) || [];
+  const top = stack.length ? null : document.elementFromPoint(c.x, c.y);
+  const nodes = stack.length ? stack : top ? [top] : [];
+  for (const node of nodes) {
+    if (!node || node === document.documentElement || node === document.body) continue;
+    if (node.id === "kirlian" || node.closest?.("#kirlian, #splash")) continue;
+    const el =
+      node.closest?.(
+        ".holding-row, .pf-card, .summary-card, .settings-group, .coin-avatar, .field-input, .btn-primary, .btn-secondary, .brand, .modal.sheet, .risk-row, .buysell-panel, .addr-card, h2"
+      ) || (node.classList?.contains("kirlian-wounded") || node.classList?.contains("kirlian-shattered") ? node : null);
+    if (!el || el.id === "kirlian") continue;
+    if (el.closest?.("#kirlian, #splash")) continue;
+    return el;
+  }
+  return null;
+}
+
+function hitCoordsOnElement(el, portraitX, portraitY) {
+  if (!el?.getBoundingClientRect) return { rx: 0.5, ry: 0.5 };
+  const box = el.getBoundingClientRect();
+  const c = fromPortraitPoint(portraitX, portraitY);
+  const rx = box.width > 0 ? (c.x - box.left) / box.width : 0.5;
+  const ry = box.height > 0 ? (c.y - box.top) / box.height : 0.5;
+  return {
+    rx: Math.max(0.02, Math.min(0.98, rx)),
+    ry: Math.max(0.02, Math.min(0.98, ry)),
+  };
+}
+
 function applyPortraitFallback() {
   const html = document.documentElement;
   html.classList.remove("force-portrait-cw", "force-portrait-ccw");
@@ -5558,8 +5597,7 @@ function paintKirlianWoundVisual(el, rec) {
  * Green heal only affects scars near the strike point.
  * Returns { marks, healed } — distant damage stays permanent.
  */
-function healScarMarksNear(marks, healAmount, hx, hy) {
-  const radius = 0.28; // ~28% of element size
+function healScarMarksNear(marks, healAmount, hx, hy, radius = 0.28) {
   let left = healAmount;
   let healed = 0;
   const out = [];
@@ -5645,10 +5683,10 @@ function kirlianHealPulseCount(blastPower) {
 }
 
 /**
- * Pulse a green glow around the element, then clear it, then apply heal
- * only if the strike was near an existing scar / shatter origin.
+ * Pulse a green glow around the element, then clear it, then apply heal.
+ * @param {"strike"|"touch"} mode strike = near-scar only; touch = charge-on-element mend
  */
-function pulseKirlianGreenThenHeal(host, id, amount, rx, ry, blastPower) {
+function pulseKirlianGreenThenHeal(host, id, amount, rx, ry, blastPower, mode = "strike") {
   if (!host) return;
   const pulses = kirlianHealPulseCount(blastPower);
   const pulseMs = 420;
@@ -5669,16 +5707,28 @@ function pulseKirlianGreenThenHeal(host, id, amount, rx, ry, blastPower) {
     let { dmg, marks, shattered, sx, sy } = rec;
     marks = marks.map(normalizeScarMark).filter(Boolean);
 
-    const result = healScarMarksNear(marks, amount, rx, ry);
+    let result;
+    if (mode === "touch") {
+      // Charging on the element mends scars near the finger (wider radius)
+      result = healScarMarksNear(marks, amount, rx, ry, 0.45);
+      // Stronger charge can clear shatter if you're holding the broken piece
+      if (shattered && (Math.hypot(rx - sx, ry - sy) <= 0.45 || (blastPower || 0) >= 0.55)) {
+        shattered = false;
+        result.healed = Math.max(result.healed, 1);
+      }
+    } else {
+      result = healScarMarksNear(marks, amount, rx, ry);
+      if (shattered && Math.hypot(rx - sx, ry - sy) <= 0.32) {
+        shattered = false;
+        result.healed = Math.max(result.healed, 1);
+      }
+    }
+
     marks = result.marks;
     dmg = Math.max(0, marks.reduce((s, m) => s + Math.round((m.power || 0.4) * 18), 0));
     dmg = Math.min(100, dmg);
-    if (shattered && Math.hypot(rx - sx, ry - sy) <= 0.32) {
-      shattered = false;
-      result.healed = Math.max(result.healed, 1);
-    }
     if (!marks.length && !shattered) dmg = 0;
-    if (!result.healed) return; // pulsed, but no nearby scar to mend
+    if (!result.healed) return; // pulsed, but nothing to mend
 
     const saved = setElementDamageRecord(id, { dmg, marks, shattered, sx, sy });
     paintKirlianWoundVisual(host, saved);
@@ -6171,12 +6221,20 @@ function wireKirlian() {
         if (t.strikeLife > 0) t.strikeLife -= 0.026;
         if (t.blastLife <= 0) t.blast = false;
         if (t.blastLife <= 0 && t.strikeLife <= 0) {
+          if (t.chargeHealEl) {
+            t.chargeHealEl.classList.remove("kirlian-charge-heal");
+            t.chargeHealEl = null;
+          }
           contacts.delete(id);
           continue;
         }
         alive = true;
         if (t.blast) warpSrc = t;
       } else {
+        if (t.chargeHealEl) {
+          t.chargeHealEl.classList.remove("kirlian-charge-heal");
+          t.chargeHealEl = null;
+        }
         contacts.delete(id);
         continue;
       }
@@ -6197,7 +6255,31 @@ function wireKirlian() {
     }
   }
 
-  function upsert(id, clientX, clientY) {
+  function syncChargeHealPreview(t) {
+      // Green mode: holding on a wounded element pulses a mend preview while charging
+      const prev = t.chargeHealEl;
+      if (kirlianStrikeKind() !== "heal" || !t.held || t.blast) {
+        if (prev) {
+          prev.classList.remove("kirlian-charge-heal");
+          t.chargeHealEl = null;
+        }
+        return;
+      }
+      const el = kirlianElementAtPortrait(t.x, t.y);
+      const id = el ? assignKirlianElementId(el) : "";
+      const rec = id ? getElementDamageRecord(id) : null;
+      const wounded = !!(rec && (rec.dmg > 0 || rec.marks?.length || rec.shattered));
+      if (prev && prev !== el) prev.classList.remove("kirlian-charge-heal");
+      if (el && wounded) {
+        ensureKirlianWoundHost(el);
+        el.classList.add("kirlian-charge-heal");
+        t.chargeHealEl = el;
+      } else {
+        t.chargeHealEl = null;
+      }
+    }
+
+    function upsert(id, clientX, clientY) {
     if (getLightningPower() <= 0) return;
     let t = contacts.get(id);
     if (!t || t.blast) {
@@ -6212,12 +6294,15 @@ function wireKirlian() {
         blastPower: 0,
         targets: null,
         strikeLife: 0,
+        chargeHealEl: null,
+        touchHealed: false,
       };
       contacts.set(id, t);
     }
     t.x = clientX;
     t.y = clientY;
     t.held = true;
+    syncChargeHealPreview(t);
     kick();
   }
 
@@ -6225,6 +6310,37 @@ function wireKirlian() {
     const t = contacts.get(id);
     if (!t || t.blast) return;
     t.held = false;
+
+    // Green: charge on a wounded element to heal it (pulse → then mend near touch)
+    if (kirlianStrikeKind() === "heal" && !t.touchHealed) {
+      const el = t.chargeHealEl || kirlianElementAtPortrait(t.x, t.y);
+      if (el) {
+        const host = ensureKirlianWoundHost(el);
+        const eid = assignKirlianElementId(host);
+        const rec = getElementDamageRecord(eid);
+        if (rec.dmg > 0 || rec.marks.length || rec.shattered) {
+          const hit = hitCoordsOnElement(host, t.x, t.y);
+          const charge = Math.max(0.25, t.charge || 0); // light touch still counts a bit
+          t.touchHealed = true;
+          el.classList.remove("kirlian-charge-heal");
+          t.chargeHealEl = null;
+          pulseKirlianGreenThenHeal(
+            host,
+            eid,
+            kirlianStrikeAmount(charge),
+            hit.rx,
+            hit.ry,
+            charge,
+            "touch"
+          );
+        }
+      }
+    }
+    if (t.chargeHealEl) {
+      t.chargeHealEl.classList.remove("kirlian-charge-heal");
+      t.chargeHealEl = null;
+    }
+
     t.blast = true;
     t.blastPower = t.charge;
     t.blastLife = 1;

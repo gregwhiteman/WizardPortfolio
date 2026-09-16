@@ -2813,6 +2813,25 @@ button.holding-row:active {
   animation: kirlian-shake 0.42s ease-out;
 }
 
+/* Charging green heal while holding on a wounded element */
+.kirlian-charge-heal {
+  position: relative;
+}
+
+.kirlian-charge-heal::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 5;
+  border: 1.5px solid rgba(90, 255, 150, 0.75);
+  box-shadow:
+    0 0 16px rgba(70, 255, 130, 0.45),
+    inset 0 0 12px rgba(90, 255, 150, 0.22);
+  animation: kirlian-mend-pulse 0.55s ease-in-out infinite;
+}
+
 .kirlian-hit-heal {
   animation: kirlian-mend-pulse-host 0.42s ease-in-out var(--heal-pulses, 2);
 }
