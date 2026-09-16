@@ -2766,8 +2766,8 @@ button.holding-row:active {
 
 .kirlian-scar-burn {
   mix-blend-mode: multiply;
-  opacity: calc(0.72 + var(--p, 0.5) * 0.28);
-  filter: contrast(1.12) saturate(1.05);
+  opacity: calc(0.82 + var(--p, 0.5) * 0.18);
+  filter: contrast(1.14) saturate(1.08);
 }
 
 .kirlian-scar-hole {

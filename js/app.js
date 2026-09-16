@@ -5271,7 +5271,8 @@ function kirlianStrikeKind() {
 function kirlianStrikeAmount(blastPower) {
   const level = getLightningPower();
   const charge = Math.max(0, Math.min(1, Number(blastPower) || 0));
-  return Math.max(1, Math.round((1 + level * 0.15) * (0.35 + charge * 1.65)));
+  // Even a light tap leaves a little damage; harder charge scales up
+  return Math.max(2, Math.round((1.5 + level * 0.16) * (0.45 + charge * 1.55)));
 }
 
 /** Stable id for a UI node so wounds survive reloads in localStorage. */
@@ -5443,26 +5444,28 @@ function shatterOverlayMarkup(sx, sy, seedBase) {
 function burnSvgMarkup(mark) {
   const p = mark.power;
   const uid = `b${Math.round(mark.x * 999)}${Math.round(mark.y * 999)}${Math.round(mark.rot)}`;
-  return `<svg class="kirlian-scar kirlian-scar-burn" viewBox="0 0 64 64" style="left:${(mark.x * 100).toFixed(1)}%;top:${(mark.y * 100).toFixed(1)}%;width:${(22 + p * 38).toFixed(1)}%;height:${(22 + p * 38).toFixed(1)}%;--p:${p.toFixed(2)};--rot:${mark.rot.toFixed(0)}deg">
+  // Keep light strikes readable — floor size so tiny taps still leave a scorch
+  const size = 26 + p * 34;
+  return `<svg class="kirlian-scar kirlian-scar-burn" viewBox="0 0 64 64" style="left:${(mark.x * 100).toFixed(1)}%;top:${(mark.y * 100).toFixed(1)}%;width:${size.toFixed(1)}%;height:${size.toFixed(1)}%;--p:${p.toFixed(2)};--rot:${mark.rot.toFixed(0)}deg">
     <defs>
       <radialGradient id="${uid}-core" cx="48%" cy="44%" r="55%">
         <stop offset="0%" stop-color="rgba(12,6,3,0.95)"/>
-        <stop offset="35%" stop-color="rgba(28,12,6,0.88)"/>
-        <stop offset="62%" stop-color="rgba(72,28,10,0.55)"/>
-        <stop offset="82%" stop-color="rgba(140,55,18,0.28)"/>
+        <stop offset="35%" stop-color="rgba(28,12,6,0.9)"/>
+        <stop offset="62%" stop-color="rgba(72,28,10,0.62)"/>
+        <stop offset="82%" stop-color="rgba(140,55,18,0.34)"/>
         <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
       </radialGradient>
       <radialGradient id="${uid}-ember" cx="40%" cy="36%" r="40%">
-        <stop offset="0%" stop-color="rgba(255,170,70,${(0.35 * p).toFixed(2)})"/>
-        <stop offset="45%" stop-color="rgba(255,90,30,${(0.18 * p).toFixed(2)})"/>
+        <stop offset="0%" stop-color="rgba(255,170,70,${(0.4 + 0.25 * p).toFixed(2)})"/>
+        <stop offset="45%" stop-color="rgba(255,90,30,${(0.22 + 0.15 * p).toFixed(2)})"/>
         <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
       </radialGradient>
     </defs>
     <ellipse cx="32" cy="33" rx="${(18 + p * 8).toFixed(1)}" ry="${(15 + p * 7).toFixed(1)}" fill="url(#${uid}-core)" transform="rotate(${(mark.rot % 40) - 20} 32 33)"/>
     <ellipse cx="30" cy="30" rx="${(8 + p * 5).toFixed(1)}" ry="${(6 + p * 4).toFixed(1)}" fill="url(#${uid}-ember)"/>
-    <path d="M ${(20 + p * 4).toFixed(1)} ${(24 - p * 2).toFixed(1)} C 28 18, 38 20, ${(42 + p * 3).toFixed(1)} ${(26 + p).toFixed(1)} C 46 34, 40 44, 32 46 C 22 47, 16 38, ${(20 + p * 4).toFixed(1)} ${(24 - p * 2).toFixed(1)} Z" fill="rgba(8,4,2,${(0.35 + p * 0.35).toFixed(2)})" opacity="0.85"/>
-    <circle cx="26" cy="28" r="${(1.2 + p).toFixed(1)}" fill="rgba(255,140,50,${(0.25 * p).toFixed(2)})"/>
-    <circle cx="36" cy="34" r="${(0.8 + p * 0.7).toFixed(1)}" fill="rgba(255,100,40,${(0.2 * p).toFixed(2)})"/>
+    <path d="M ${(20 + p * 4).toFixed(1)} ${(24 - p * 2).toFixed(1)} C 28 18, 38 20, ${(42 + p * 3).toFixed(1)} ${(26 + p).toFixed(1)} C 46 34, 40 44, 32 46 C 22 47, 16 38, ${(20 + p * 4).toFixed(1)} ${(24 - p * 2).toFixed(1)} Z" fill="rgba(8,4,2,${(0.4 + p * 0.35).toFixed(2)})" opacity="0.9"/>
+    <circle cx="26" cy="28" r="${(1.2 + p).toFixed(1)}" fill="rgba(255,140,50,${(0.3 + 0.2 * p).toFixed(2)})"/>
+    <circle cx="36" cy="34" r="${(0.8 + p * 0.7).toFixed(1)}" fill="rgba(255,100,40,${(0.25 + 0.15 * p).toFixed(2)})"/>
   </svg>`;
 }
 
@@ -5605,11 +5608,13 @@ function applyKirlianStrikeToElement(el, blastPower, hit = null) {
 
   if (kind === "damage") {
     dmg = Math.min(100, dmg + amount);
+    // Light strikes still leave a visible scorch; stronger hits dig deeper
+    const scarPower = Math.max(0.38, Math.min(1, 0.28 + amount / 22));
     marks.push({
       x: rx,
       y: ry,
       kind: scarKindFromHit(rx, ry, amount),
-      power: Math.max(0.2, Math.min(1, amount / 28)),
+      power: scarPower,
       rot: Math.random() * 360,
     });
     marks = marks.slice(-12);
