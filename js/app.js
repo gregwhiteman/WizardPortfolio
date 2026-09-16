@@ -5628,39 +5628,61 @@ function applyKirlianStrikeToElement(el, blastPower, hit = null) {
     void host.offsetWidth;
     host.classList.add("kirlian-hit-damage");
   } else {
-    // Always flash a brief green highlight; only heal scars near the strike
-    flashKirlianGreenHighlight(host);
-
-    const result = healScarMarksNear(marks, amount, rx, ry);
-    marks = result.marks;
-    dmg = Math.max(0, marks.reduce((s, m) => s + Math.round((m.power || 0.4) * 18), 0));
-    dmg = Math.min(100, dmg);
-    // Mend shatter only if the green strike is near the shatter origin
-    if (shattered && Math.hypot(rx - sx, ry - sy) <= 0.32) {
-      shattered = false;
-      result.healed = Math.max(result.healed, 1);
-    }
-    if (!marks.length && !shattered) dmg = 0;
-    if (!result.healed) {
-      // Highlight already shown; damage stays permanent
-      return;
-    }
+    // Pulse green (count from power), then disappear, then heal if near a scar
+    pulseKirlianGreenThenHeal(host, id, amount, rx, ry, blastPower);
+    return;
   }
 
   const saved = setElementDamageRecord(id, { dmg, marks, shattered, sx, sy });
   paintKirlianWoundVisual(host, saved);
 }
 
-/** Brief green glow on a struck element, then it fades away. */
-function flashKirlianGreenHighlight(el) {
-  if (!el) return;
-  el.classList.remove("kirlian-hit-damage");
-  el.classList.remove("kirlian-hit-heal");
-  void el.offsetWidth;
-  el.classList.add("kirlian-hit-heal");
-  const clear = () => el.classList.remove("kirlian-hit-heal");
-  el.addEventListener("animationend", clear, { once: true });
-  setTimeout(clear, 750);
+/** How many green pulses: more lightning power / charge → more pulses. */
+function kirlianHealPulseCount(blastPower) {
+  const level = getLightningPower();
+  const charge = Math.max(0, Math.min(1, Number(blastPower) || 0));
+  return Math.max(2, Math.min(5, Math.round(2 + level / 40 + charge * 2)));
+}
+
+/**
+ * Pulse a green glow around the element, then clear it, then apply heal
+ * only if the strike was near an existing scar / shatter origin.
+ */
+function pulseKirlianGreenThenHeal(host, id, amount, rx, ry, blastPower) {
+  if (!host) return;
+  const pulses = kirlianHealPulseCount(blastPower);
+  const pulseMs = 420;
+  const totalMs = pulses * pulseMs;
+
+  host.style.setProperty("--heal-pulses", String(pulses));
+  host.classList.remove("kirlian-hit-damage");
+  host.classList.remove("kirlian-hit-heal");
+  void host.offsetWidth;
+  host.classList.add("kirlian-hit-heal");
+
+  setTimeout(() => {
+    host.classList.remove("kirlian-hit-heal");
+    host.style.removeProperty("--heal-pulses");
+    if (!host.isConnected) return;
+
+    const rec = getElementDamageRecord(id);
+    let { dmg, marks, shattered, sx, sy } = rec;
+    marks = marks.map(normalizeScarMark).filter(Boolean);
+
+    const result = healScarMarksNear(marks, amount, rx, ry);
+    marks = result.marks;
+    dmg = Math.max(0, marks.reduce((s, m) => s + Math.round((m.power || 0.4) * 18), 0));
+    dmg = Math.min(100, dmg);
+    if (shattered && Math.hypot(rx - sx, ry - sy) <= 0.32) {
+      shattered = false;
+      result.healed = Math.max(result.healed, 1);
+    }
+    if (!marks.length && !shattered) dmg = 0;
+    if (!result.healed) return; // pulsed, but no nearby scar to mend
+
+    const saved = setElementDamageRecord(id, { dmg, marks, shattered, sx, sy });
+    paintKirlianWoundVisual(host, saved);
+  }, totalMs + 60);
 }
 
 /** Re-apply saved wounds after DOM rebuilds / page load. */

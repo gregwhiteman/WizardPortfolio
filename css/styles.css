@@ -2814,21 +2814,22 @@ button.holding-row:active {
 }
 
 .kirlian-hit-heal {
-  animation: kirlian-mend 0.7s ease-out;
+  animation: kirlian-mend-pulse-host 0.42s ease-in-out var(--heal-pulses, 2);
 }
 
 .kirlian-hit-heal::before {
   content: "";
   position: absolute;
-  inset: -2px;
+  inset: -3px;
   border-radius: inherit;
   pointer-events: none;
   z-index: 5;
-  border: 1.5px solid rgba(90, 255, 150, 0.85);
+  border: 1.5px solid rgba(90, 255, 150, 0.9);
   box-shadow:
-    0 0 18px rgba(70, 255, 130, 0.55),
-    inset 0 0 14px rgba(90, 255, 150, 0.28);
-  animation: kirlian-mend-glow 0.7s ease-out forwards;
+    0 0 20px rgba(70, 255, 130, 0.65),
+    0 0 36px rgba(50, 220, 110, 0.35),
+    inset 0 0 16px rgba(90, 255, 150, 0.32);
+  animation: kirlian-mend-pulse 0.42s ease-in-out var(--heal-pulses, 2);
 }
 
 @keyframes kirlian-shake {
@@ -2840,16 +2841,22 @@ button.holding-row:active {
   80% { transform: translate3d(2px, 1px, 0); }
 }
 
-@keyframes kirlian-mend {
-  0% { filter: brightness(1); }
-  35% { filter: brightness(1.25) saturate(1.2); }
-  100% { filter: brightness(1); }
+@keyframes kirlian-mend-pulse-host {
+  0%,
+  100% { filter: brightness(1) saturate(1); }
+  50% { filter: brightness(1.2) saturate(1.25); }
 }
 
-@keyframes kirlian-mend-glow {
-  0% { opacity: 1; }
-  55% { opacity: 0.55; }
-  100% { opacity: 0; }
+@keyframes kirlian-mend-pulse {
+  0%,
+  100% {
+    opacity: 0.15;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
 }
 
 /* ── Opening splash ── */
