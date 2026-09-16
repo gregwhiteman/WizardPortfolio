@@ -824,8 +824,17 @@ function normalizeElementDamage(raw) {
           .filter(Boolean)
           .slice(-12)
       : [];
-    if (dmg <= 0 && !marks.length) continue;
-    out[key] = { dmg: dmg || Math.min(100, marks.length * 8), marks };
+    const shattered = !!v.shattered;
+    const sx = Number.isFinite(Number(v.sx)) ? Math.max(0.02, Math.min(0.98, Number(v.sx))) : 0.5;
+    const sy = Number.isFinite(Number(v.sy)) ? Math.max(0.02, Math.min(0.98, Number(v.sy))) : 0.5;
+    if (dmg <= 0 && !marks.length && !shattered) continue;
+    out[key] = {
+      dmg: dmg || Math.min(100, marks.length * 8),
+      marks,
+      shattered,
+      sx,
+      sy,
+    };
   }
   return out;
 }
@@ -835,7 +844,7 @@ function normalizeScarMark(m) {
   const x = Math.max(0.02, Math.min(0.98, Number(m.x)));
   const y = Math.max(0.02, Math.min(0.98, Number(m.y)));
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-  const kind = m.kind === "hole" || m.kind === "crack" || m.kind === "burn" ? m.kind : "burn";
+  const kind = m.kind === "hole" || m.kind === "burn" ? m.kind : "burn";
   const power = Math.max(0.15, Math.min(1, Number(m.power) || 0.4));
   const rot = Number.isFinite(Number(m.rot)) ? Number(m.rot) : Math.random() * 360;
   return { x, y, kind, power, rot };
@@ -5306,16 +5315,22 @@ function assignKirlianElementId(el) {
 }
 
 function getElementDamageRecord(id) {
-  if (!id || !store?.elementDamage) return { dmg: 0, marks: [] };
+  if (!id || !store?.elementDamage) return { dmg: 0, marks: [], shattered: false, sx: 0.5, sy: 0.5 };
   const raw = store.elementDamage[id];
-  if (raw == null) return { dmg: 0, marks: [] };
+  if (raw == null) return { dmg: 0, marks: [], shattered: false, sx: 0.5, sy: 0.5 };
   if (typeof raw === "number" || typeof raw === "string") {
     const dmg = Math.min(100, Math.max(0, Math.round(Number(raw) || 0)));
-    return { dmg, marks: [] };
+    return { dmg, marks: [], shattered: false, sx: 0.5, sy: 0.5 };
   }
   const dmg = Math.min(100, Math.max(0, Math.round(Number(raw.dmg) || 0)));
   const marks = Array.isArray(raw.marks) ? raw.marks.map(normalizeScarMark).filter(Boolean) : [];
-  return { dmg, marks };
+  return {
+    dmg,
+    marks,
+    shattered: !!raw.shattered,
+    sx: Number.isFinite(Number(raw.sx)) ? Number(raw.sx) : 0.5,
+    sy: Number.isFinite(Number(raw.sy)) ? Number(raw.sy) : 0.5,
+  };
 }
 
 function getElementDamage(id) {
@@ -5328,18 +5343,34 @@ function setElementDamageRecord(id, rec) {
   const marks = Array.isArray(rec?.marks)
     ? rec.marks.map(normalizeScarMark).filter(Boolean).slice(-12)
     : [];
-  if (dmg <= 0 && !marks.length) delete store.elementDamage[id];
-  else store.elementDamage[id] = { dmg: dmg || Math.min(100, marks.length * 8), marks };
+  const shattered = !!rec?.shattered && (dmg > 0 || marks.length > 0);
+  const sx = Number.isFinite(Number(rec?.sx)) ? Math.max(0.02, Math.min(0.98, Number(rec.sx))) : 0.5;
+  const sy = Number.isFinite(Number(rec?.sy)) ? Math.max(0.02, Math.min(0.98, Number(rec.sy))) : 0.5;
+  if (dmg <= 0 && !marks.length && !shattered) delete store.elementDamage[id];
+  else {
+    store.elementDamage[id] = {
+      dmg: dmg || Math.min(100, marks.length * 8),
+      marks,
+      shattered,
+      sx,
+      sy,
+    };
+  }
   saveStore();
-  return store.elementDamage[id] || { dmg: 0, marks: [] };
+  return store.elementDamage[id] || { dmg: 0, marks: [], shattered: false, sx: 0.5, sy: 0.5 };
 }
 
-/** Pick scar type from where the bolt hit on the element. */
+/** Pick scar type from where the bolt hit on the element (no white crack marks). */
 function scarKindFromHit(rx, ry, amount) {
   const edge = Math.min(rx, ry, 1 - rx, 1 - ry);
-  if (edge < 0.16) return "crack";
   if (amount >= 14 || (edge > 0.32 && amount >= 9)) return "hole";
   return "burn";
+}
+
+/** Hard strike: high power×charge impact that shatters the whole element like glass. */
+function isHardGlassStrike(amount, blastPower) {
+  const charge = Math.max(0, Math.min(1, Number(blastPower) || 0));
+  return amount >= 12 || (charge >= 0.72 && amount >= 8);
 }
 
 function ensureKirlianWoundHost(el) {
@@ -5350,21 +5381,167 @@ function ensureKirlianWoundHost(el) {
   return el;
 }
 
-function crackPathForMark(mark) {
-  // Jagged glass fracture radiating from the strike toward the nearest edge
+function scarSeedRand(seed) {
+  let t = (Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b) >>> 0) / 4294967296;
+  return () => {
+    t = (Math.imul(t * 0x10000 + 0x7f4a7c15, 0x27d4eb2d) >>> 0) / 4294967296;
+    return t;
+  };
+}
+
+function crackPathsForMark(mark) {
+  const rand = scarSeedRand(((mark.rot * 97) | 0) + ((mark.x * 1000) | 0) * 13);
   const x = mark.x * 100;
   const y = mark.y * 100;
   const edge = Math.min(mark.x, mark.y, 1 - mark.x, 1 - mark.y);
+  let side = "bottom";
   let ex = x;
   let ey = y;
-  if (mark.x <= edge + 0.001) ex = 0;
-  else if (1 - mark.x <= edge + 0.001) ex = 100;
-  else if (mark.y <= edge + 0.001) ey = 0;
-  else ey = 100;
-  const mx = (x + ex) / 2 + (mark.rot % 13) - 6;
-  const my = (y + ey) / 2 + (mark.power * 10 - 5);
-  const s = 4 + mark.power * 10;
-  return `M ${x.toFixed(1)} ${y.toFixed(1)} L ${(x + s).toFixed(1)} ${(y - s * 0.4).toFixed(1)} L ${mx.toFixed(1)} ${my.toFixed(1)} L ${(ex + (y - ey) * 0.08).toFixed(1)} ${(ey + (x - ex) * 0.08).toFixed(1)} M ${x.toFixed(1)} ${y.toFixed(1)} L ${(x - s * 0.7).toFixed(1)} ${(y + s * 0.5).toFixed(1)} L ${(mx - 3).toFixed(1)} ${(my + 4).toFixed(1)}`;
+  if (mark.x <= edge + 0.001) {
+    side = "left";
+    ex = 0;
+  } else if (1 - mark.x <= edge + 0.001) {
+    side = "right";
+    ex = 100;
+  } else if (mark.y <= edge + 0.001) {
+    side = "top";
+    ey = 0;
+  } else {
+    side = "bottom";
+    ey = 100;
+  }
+
+  // Branching fracture spokes (main + side forks)
+  const branches = [];
+  const branchCount = 3 + Math.floor(mark.power * 3);
+  for (let b = 0; b < branchCount; b++) {
+    const ang =
+      Math.atan2(ey - y, ex - x) + (b === 0 ? 0 : (rand() - 0.5) * (0.9 + mark.power));
+    const len = (b === 0 ? 14 : 7) + mark.power * (b === 0 ? 22 : 14) * (0.55 + rand());
+    let cx = x;
+    let cy = y;
+    let d = `M ${cx.toFixed(1)} ${cy.toFixed(1)}`;
+    const steps = 4 + Math.floor(rand() * 3);
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      const wobble = (rand() - 0.5) * (2.2 + mark.power * 2);
+      const nx = -Math.sin(ang);
+      const ny = Math.cos(ang);
+      cx = x + Math.cos(ang) * len * t + nx * wobble;
+      cy = y + Math.sin(ang) * len * t + ny * wobble;
+      d += ` L ${cx.toFixed(1)} ${cy.toFixed(1)}`;
+      if (i > 1 && i < steps && rand() > 0.55) {
+        const forkAng = ang + (rand() > 0.5 ? 1 : -1) * (0.4 + rand() * 0.7);
+        const fl = len * (0.18 + rand() * 0.28) * (1 - t);
+        const fx = cx + Math.cos(forkAng) * fl;
+        const fy = cy + Math.sin(forkAng) * fl;
+        branches.push(`M ${cx.toFixed(1)} ${cy.toFixed(1)} L ${fx.toFixed(1)} ${fy.toFixed(1)}`);
+      }
+    }
+    branches.unshift(d);
+  }
+
+  // Broken glass rim — irregular chip cut into the border
+  const span = 9 + mark.power * 16;
+  const jag = 2.2 + mark.power * 4.2;
+  const chips = [];
+  if (side === "left" || side === "right") {
+    const x0 = side === "left" ? 0 : 100;
+    const y0 = Math.max(1, Math.min(99, ey - span / 2));
+    const y1 = Math.max(1, Math.min(99, ey + span / 2));
+    const dir = side === "left" ? 1 : -1;
+    let rim = `M ${x0} ${y0.toFixed(1)}`;
+    const segs = 6 + Math.floor(mark.power * 4);
+    for (let i = 1; i <= segs; i++) {
+      const t = i / segs;
+      const yy = y0 + (y1 - y0) * t;
+      const depth = dir * jag * (0.35 + Math.sin(t * Math.PI) * (0.9 + rand() * 0.8) + (rand() - 0.5) * 0.55);
+      rim += ` L ${(x0 + depth).toFixed(1)} ${yy.toFixed(1)}`;
+      if (rand() > 0.65) {
+        chips.push(
+          `M ${(x0 + depth * 0.2).toFixed(1)} ${yy.toFixed(1)} L ${(x0 + depth * (0.55 + rand() * 0.4)).toFixed(1)} ${(yy + (rand() - 0.5) * 3).toFixed(1)}`
+        );
+      }
+    }
+    return { spokes: branches.join(" "), rim, chips: chips.join(" ") };
+  }
+  const y0 = side === "top" ? 0 : 100;
+  const x0 = Math.max(1, Math.min(99, ex - span / 2));
+  const x1 = Math.max(1, Math.min(99, ex + span / 2));
+  const dir = side === "top" ? 1 : -1;
+  let rim = `M ${x0.toFixed(1)} ${y0}`;
+  const segs = 6 + Math.floor(mark.power * 4);
+  for (let i = 1; i <= segs; i++) {
+    const t = i / segs;
+    const xx = x0 + (x1 - x0) * t;
+    const depth = dir * jag * (0.35 + Math.sin(t * Math.PI) * (0.9 + rand() * 0.8) + (rand() - 0.5) * 0.55);
+    rim += ` L ${xx.toFixed(1)} ${(y0 + depth).toFixed(1)}`;
+    if (rand() > 0.65) {
+      chips.push(
+        `M ${xx.toFixed(1)} ${(y0 + depth * 0.2).toFixed(1)} L ${(xx + (rand() - 0.5) * 3).toFixed(1)} ${(y0 + depth * (0.55 + rand() * 0.4)).toFixed(1)}`
+      );
+    }
+  }
+  return { spokes: branches.join(" "), rim, chips: chips.join(" ") };
+}
+
+function burnSvgMarkup(mark) {
+  const p = mark.power;
+  const uid = `b${Math.round(mark.x * 999)}${Math.round(mark.y * 999)}${Math.round(mark.rot)}`;
+  return `<svg class="kirlian-scar kirlian-scar-burn" viewBox="0 0 64 64" style="left:${(mark.x * 100).toFixed(1)}%;top:${(mark.y * 100).toFixed(1)}%;width:${(22 + p * 38).toFixed(1)}%;height:${(22 + p * 38).toFixed(1)}%;--p:${p.toFixed(2)};--rot:${mark.rot.toFixed(0)}deg">
+    <defs>
+      <radialGradient id="${uid}-core" cx="48%" cy="44%" r="55%">
+        <stop offset="0%" stop-color="rgba(12,6,3,0.95)"/>
+        <stop offset="35%" stop-color="rgba(28,12,6,0.88)"/>
+        <stop offset="62%" stop-color="rgba(72,28,10,0.55)"/>
+        <stop offset="82%" stop-color="rgba(140,55,18,0.28)"/>
+        <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+      </radialGradient>
+      <radialGradient id="${uid}-ember" cx="40%" cy="36%" r="40%">
+        <stop offset="0%" stop-color="rgba(255,170,70,${(0.35 * p).toFixed(2)})"/>
+        <stop offset="45%" stop-color="rgba(255,90,30,${(0.18 * p).toFixed(2)})"/>
+        <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+      </radialGradient>
+    </defs>
+    <ellipse cx="32" cy="33" rx="${(18 + p * 8).toFixed(1)}" ry="${(15 + p * 7).toFixed(1)}" fill="url(#${uid}-core)" transform="rotate(${(mark.rot % 40) - 20} 32 33)"/>
+    <ellipse cx="30" cy="30" rx="${(8 + p * 5).toFixed(1)}" ry="${(6 + p * 4).toFixed(1)}" fill="url(#${uid}-ember)"/>
+    <path d="M ${(20 + p * 4).toFixed(1)} ${(24 - p * 2).toFixed(1)} C 28 18, 38 20, ${(42 + p * 3).toFixed(1)} ${(26 + p).toFixed(1)} C 46 34, 40 44, 32 46 C 22 47, 16 38, ${(20 + p * 4).toFixed(1)} ${(24 - p * 2).toFixed(1)} Z" fill="rgba(8,4,2,${(0.35 + p * 0.35).toFixed(2)})" opacity="0.85"/>
+    <circle cx="26" cy="28" r="${(1.2 + p).toFixed(1)}" fill="rgba(255,140,50,${(0.25 * p).toFixed(2)})"/>
+    <circle cx="36" cy="34" r="${(0.8 + p * 0.7).toFixed(1)}" fill="rgba(255,100,40,${(0.2 * p).toFixed(2)})"/>
+  </svg>`;
+}
+
+function holeSvgMarkup(mark) {
+  const p = mark.power;
+  const uid = `h${Math.round(mark.x * 999)}${Math.round(mark.y * 999)}${Math.round(mark.rot)}`;
+  const rand = scarSeedRand(((mark.rot * 51) | 0) + 17);
+  // Irregular torn void polygon
+  const pts = [];
+  const n = 9 + Math.floor(p * 5);
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    const r = 11 + p * 7 + (rand() - 0.5) * (4 + p * 5);
+    pts.push(`${(32 + Math.cos(a) * r).toFixed(1)},${(32 + Math.sin(a) * r).toFixed(1)}`);
+  }
+  return `<svg class="kirlian-scar kirlian-scar-hole" viewBox="0 0 64 64" style="left:${(mark.x * 100).toFixed(1)}%;top:${(mark.y * 100).toFixed(1)}%;width:${(20 + p * 36).toFixed(1)}%;height:${(20 + p * 36).toFixed(1)}%;--p:${p.toFixed(2)};--rot:${mark.rot.toFixed(0)}deg">
+    <defs>
+      <radialGradient id="${uid}-void" cx="50%" cy="48%" r="55%">
+        <stop offset="0%" stop-color="rgba(0,0,0,1)"/>
+        <stop offset="55%" stop-color="rgba(6,3,2,0.96)"/>
+        <stop offset="78%" stop-color="rgba(28,12,6,0.55)"/>
+        <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+      </radialGradient>
+      <radialGradient id="${uid}-rim" cx="42%" cy="36%" r="60%">
+        <stop offset="0%" stop-color="rgba(255,160,70,${(0.22 * p).toFixed(2)})"/>
+        <stop offset="40%" stop-color="rgba(90,35,12,0.45)"/>
+        <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+      </radialGradient>
+    </defs>
+    <polygon points="${pts.join(" ")}" fill="url(#${uid}-rim)" opacity="0.9"/>
+    <polygon points="${pts.join(" ")}" fill="url(#${uid}-void)" transform="translate(32 32) scale(0.82) translate(-32 -32)"/>
+    <polygon points="${pts.join(" ")}" fill="none" stroke="rgba(40,18,8,0.85)" stroke-width="1.2"/>
+    <polygon points="${pts.join(" ")}" fill="none" stroke="rgba(255,150,80,${(0.18 * p).toFixed(2)})" stroke-width="0.5" opacity="0.8"/>
+  </svg>`;
 }
 
 function renderScarLayer(host, marks) {
@@ -5381,14 +5558,17 @@ function renderScarLayer(host, marks) {
   }
   layer.innerHTML = marks
     .map((m) => {
-      const size = `${(18 + m.power * 34).toFixed(1)}%`;
       if (m.kind === "crack") {
-        return `<svg class="kirlian-scar kirlian-scar-crack" viewBox="0 0 100 100" preserveAspectRatio="none" style="--p:${m.power.toFixed(2)}"><path d="${crackPathForMark(m)}" /></svg>`;
+        const paths = crackPathsForMark(m);
+        return `<svg class="kirlian-scar kirlian-scar-crack" viewBox="0 0 100 100" preserveAspectRatio="none" style="--p:${m.power.toFixed(2)}">
+          <path class="kirlian-crack-glow" d="${paths.spokes}" />
+          <path class="kirlian-crack-core" d="${paths.spokes}" />
+          <path class="kirlian-crack-rim" d="${paths.rim}" />
+          ${paths.chips ? `<path class="kirlian-crack-chip" d="${paths.chips}" />` : ""}
+        </svg>`;
       }
-      if (m.kind === "hole") {
-        return `<span class="kirlian-scar kirlian-scar-hole" style="left:${(m.x * 100).toFixed(1)}%;top:${(m.y * 100).toFixed(1)}%;width:${size};height:${size};--p:${m.power.toFixed(2)};--rot:${m.rot.toFixed(0)}deg"></span>`;
-      }
-      return `<span class="kirlian-scar kirlian-scar-burn" style="left:${(m.x * 100).toFixed(1)}%;top:${(m.y * 100).toFixed(1)}%;width:${size};height:${size};--p:${m.power.toFixed(2)};--rot:${m.rot.toFixed(0)}deg"></span>`;
+      if (m.kind === "hole") return holeSvgMarkup(m);
+      return burnSvgMarkup(m);
     })
     .join("");
 }
