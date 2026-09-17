@@ -2230,9 +2230,18 @@ function seriesMedian(vals) {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+function seriesPercentile(vals, p) {
+  if (!vals.length) return 0;
+  const sorted = [...vals].sort((a, b) => a - b);
+  const i = Math.max(0, Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * p)));
+  return sorted[i];
+}
+
 /**
- * When displaying the omen, walk the series and drop bad plots:
- * zeros, far-below-median dips, far-above-median spikes, and isolated neighbor jumps.
+ * When displaying the omen, drop plots that crush the scale:
+ * long low plateaus from partial quotes, isolated dips/spikes.
+ * Uses the high end of the series (not the median) so a big cluster of
+ * bad ~$4k points can't hide a real ~$60k portfolio.
  */
 function sanitizeChartSeries(series) {
   let pts = (series || [])
@@ -2240,14 +2249,28 @@ function sanitizeChartSeries(series) {
     .sort((a, b) => a.t - b.t);
   if (pts.length < 3) return pts;
 
-  const median = seriesMedian(pts.map((p) => p.v));
-  if (!(median > 0)) return pts;
+  const vals = pts.map((p) => p.v);
+  const maxV = Math.max(...vals);
+  const q80 = seriesPercentile(vals, 0.8);
+  const recent = pts.slice(-Math.max(5, Math.floor(pts.length * 0.3)));
+  const recentMed = seriesMedian(recent.map((p) => p.v));
+  // Baseline = what the portfolio "should" look like (prefer recent / high values)
+  const baseline = Math.max(q80, recentMed, maxV * 0.55);
+  if (!(baseline > 0)) return pts;
 
-  // Pass 1: drop points far from the typical portfolio total
-  pts = pts.filter((p) => p.v >= median * 0.25 && p.v <= median * 4);
-  if (pts.length < 3) return pts;
+  // Drop anything well below the real scale (e.g. $4.5k vs ~$60k)
+  const floor = baseline * 0.4;
+  const ceiling = baseline * 3.5;
+  pts = pts.filter((p) => p.v >= floor && p.v <= ceiling);
+  if (pts.length < 2) {
+    // Fallback: keep only the top half by value so the chart still draws
+    const mid = seriesPercentile(vals, 0.5);
+    return (series || [])
+      .filter((p) => Number.isFinite(p?.v) && p.v >= mid)
+      .sort((a, b) => a.t - b.t);
+  }
 
-  // Pass 2: drop isolated spikes/dips vs immediate neighbors
+  // Drop isolated spikes/dips vs neighbors
   const cleaned = [];
   for (let i = 0; i < pts.length; i++) {
     const prev = pts[i - 1];
@@ -2263,16 +2286,16 @@ function sanitizeChartSeries(series) {
       continue;
     }
     const vsNeighbors = cur.v / neighborMid;
-    const neighborsClose = Math.max(prev.v, next.v) / Math.min(prev.v, next.v) <= 1.35;
-    // Isolated bad tick: neighbors agree, this point is wildly off
-    if (neighborsClose && (vsNeighbors < 0.35 || vsNeighbors > 2.75)) continue;
+    const neighborsClose = Math.max(prev.v, next.v) / Math.min(prev.v, next.v) <= 1.4;
+    if (neighborsClose && (vsNeighbors < 0.45 || vsNeighbors > 2.4)) continue;
     cleaned.push(cur);
   }
 
-  // Pass 3: re-check against median of the cleaned set
+  // Final pass vs the cleaned high baseline
   if (cleaned.length >= 3) {
-    const m2 = seriesMedian(cleaned.map((p) => p.v));
-    if (m2 > 0) return cleaned.filter((p) => p.v >= m2 * 0.25 && p.v <= m2 * 4);
+    const cVals = cleaned.map((p) => p.v);
+    const cBase = Math.max(seriesPercentile(cVals, 0.75), seriesMedian(cVals), Math.max(...cVals) * 0.55);
+    return cleaned.filter((p) => p.v >= cBase * 0.4 && p.v <= cBase * 3.5);
   }
   return cleaned;
 }
