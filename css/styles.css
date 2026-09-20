@@ -2742,71 +2742,52 @@ button.holding-row:active {
   position: relative;
 }
 
-.kirlian-scar-layer {
-  position: absolute;
+/* Screen-wide glass cracks — not clipped by cards; 20% opacity */
+#kirlian-glass-layer {
+  position: fixed;
   inset: 0;
-  border-radius: inherit;
-  overflow: hidden;
+  z-index: 450;
   pointer-events: none;
-  z-index: 6;
-  isolation: isolate;
+  overflow: visible;
+  opacity: 1;
 }
 
-.kirlian-scar {
-  position: absolute;
-  pointer-events: none;
+.kirlian-glass-screen {
+  display: block;
+  width: 100%;
+  height: 100%;
   overflow: visible;
 }
 
-.kirlian-scar-burn,
-.kirlian-scar-hole {
-  transform: translate(-50%, -50%) rotate(var(--rot, 0deg));
-  transform-origin: center center;
-}
-
-.kirlian-scar-burn {
-  mix-blend-mode: multiply;
-  opacity: calc(0.82 + var(--p, 0.5) * 0.18);
-  filter: contrast(1.14) saturate(1.08);
-}
-
-.kirlian-scar-hole {
-  mix-blend-mode: normal;
-  opacity: calc(0.82 + var(--p, 0.5) * 0.18);
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
-}
-
-/* Hard-hit: whole element reads as shattered glass */
-.kirlian-shattered {
-  filter: saturate(0.82) contrast(1.06) brightness(0.96);
-}
-
-.kirlian-shatter-overlay {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.kirlian-shatter-facets path {
-  fill: rgba(140, 170, 200, 0.06);
-  stroke: none;
-}
-
-.kirlian-shatter-lines path {
+.kirlian-glass-rays path,
+.kirlian-glass-forks path {
   fill: none;
-  stroke: rgba(28, 34, 42, 0.72);
-  stroke-width: 0.55;
+  stroke: #ffffff;
+  stroke-opacity: 1;
   stroke-linecap: round;
   stroke-linejoin: round;
-  filter: drop-shadow(0 0 0.4px rgba(255, 255, 255, 0.15));
 }
 
-.kirlian-shattered .kirlian-shatter-lines path:nth-child(odd) {
-  stroke: rgba(18, 22, 28, 0.8);
-  stroke-width: 0.7;
+.kirlian-glass-rays path {
+  stroke-width: calc(0.7 + var(--p, 0.5) * 0.55);
+}
+
+.kirlian-glass-forks path {
+  stroke-width: calc(0.4 + var(--p, 0.5) * 0.35);
+}
+
+.kirlian-glass-origin {
+  fill: #ffffff;
+  fill-opacity: 1;
+}
+
+.kirlian-glass-speck {
+  fill: #ffffff;
+  fill-opacity: 1;
+}
+
+.kirlian-glass-hard .kirlian-glass-rays path {
+  stroke-width: calc(0.85 + var(--p, 0.5) * 0.7);
 }
 
 .kirlian-hit-damage {

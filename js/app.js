@@ -878,6 +878,10 @@ function normalizeElementDamage(raw) {
   return out;
 }
 
+function newScarMarkId() {
+  return `m${Date.now().toString(36)}${Math.floor(Math.random() * 1e9).toString(36)}`;
+}
+
 function normalizeScarMark(m) {
   if (!m || typeof m !== "object") return null;
   const x = Math.max(0.02, Math.min(0.98, Number(m.x)));
@@ -886,7 +890,8 @@ function normalizeScarMark(m) {
   const kind = m.kind === "hole" || m.kind === "burn" ? m.kind : "burn";
   const power = Math.max(0.15, Math.min(1, Number(m.power) || 0.4));
   const rot = Number.isFinite(Number(m.rot)) ? Number(m.rot) : Math.random() * 360;
-  return { x, y, kind, power, rot };
+  const id = String(m.id || "").trim().slice(0, 40) || newScarMarkId();
+  return { id, x, y, kind, power, rot };
 }
 
 function probeLocalStorage() {
@@ -5400,6 +5405,26 @@ function getElementDamage(id) {
   return getElementDamageRecord(id).dmg;
 }
 
+function clearAllElementDamage() {
+  store.elementDamage = {};
+  glassCrackShapeCache.clear();
+  saveStore();
+  document.querySelectorAll(".kirlian-wounded, .kirlian-shattered, .kirlian-wound-host, .kirlian-hit-damage, .kirlian-hit-heal, .kirlian-charge-heal").forEach((el) => {
+    el.classList.remove(
+      "kirlian-wounded",
+      "kirlian-shattered",
+      "kirlian-hit-damage",
+      "kirlian-hit-heal",
+      "kirlian-charge-heal"
+    );
+    el.style.removeProperty("--kirlian-dmg");
+    delete el.dataset.kirlianSx;
+    delete el.dataset.kirlianSy;
+    el.querySelector(":scope > .kirlian-scar-layer")?.remove();
+  });
+  syncKirlianGlassOverlay();
+}
+
 function setElementDamageRecord(id, rec) {
   if (!store.elementDamage || typeof store.elementDamage !== "object") store.elementDamage = {};
   const dmg = Math.max(0, Math.min(100, Math.round(Number(rec?.dmg) || 0)));
@@ -5452,143 +5477,150 @@ function scarSeedRand(seed) {
   };
 }
 
-/** Full-element shattered glass overlay radiating from the hard-hit point. */
-function shatterOverlayMarkup(sx, sy, seedBase) {
-  const rand = scarSeedRand(((sx * 1000) | 0) * 17 + ((sy * 1000) | 0) * 31 + ((seedBase * 13) | 0));
-  const cx = sx * 100;
-  const cy = sy * 100;
-  const lines = [];
-  const shards = [];
-  const n = 10 + Math.floor(rand() * 5);
-  for (let i = 0; i < n; i++) {
-    const ang = (i / n) * Math.PI * 2 + (rand() - 0.5) * 0.35;
-    const len = 28 + rand() * 55;
-    let x0 = cx;
-    let y0 = cy;
-    let d = `M ${x0.toFixed(1)} ${y0.toFixed(1)}`;
-    const steps = 5 + Math.floor(rand() * 3);
+function hashScarSeed(str) {
+  let h = 2166136261;
+  const s = String(str || "");
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** Frozen crack geometry, keyed by mark id so new hits don't reshape old ones. */
+const glassCrackShapeCache = new Map();
+
+/**
+ * Crack burst around local origin (0,0). Shape is cached; only the translate moves.
+ */
+function glassCrackInner(power, seedBase, hard) {
+  const rand = scarSeedRand(seedBase);
+  const p = Math.max(0.25, Math.min(1, power));
+  const rays = [];
+  const forks = [];
+  const specks = [];
+  const starR = 1.1 + p * (hard ? 2.4 : 1.6);
+  specks.push(`<circle class="kirlian-glass-origin" cx="0" cy="0" r="${starR.toFixed(2)}" />`);
+
+  // Random count of cracks from the impact — not a fixed ring
+  const minN = hard ? 4 : 3;
+  const maxN = hard ? 16 : 11;
+  const crackN = minN + Math.floor(rand() * (maxN - minN + 1));
+  for (let i = 0; i < crackN; i++) {
+    const ang = rand() * Math.PI * 2;
+    const long = rand() > 0.45;
+    const len = long
+      ? ((hard ? 80 : 36) + rand() * (hard ? 280 : 140) * (0.55 + p)) * 0.5
+      : ((hard ? 10 : 6) + rand() * (14 + p * 18)) * 0.5;
+    let x0 = 0;
+    let y0 = 0;
+    let d = `M 0 0`;
+    const steps = long ? 4 + Math.floor(rand() * 4) : 1;
     for (let s = 1; s <= steps; s++) {
       const t = s / steps;
-      const wob = (rand() - 0.5) * 4.5;
+      const wob = long ? (rand() - 0.5) * (8 + p * 14) : 0;
       const nx = -Math.sin(ang);
       const ny = Math.cos(ang);
-      x0 = cx + Math.cos(ang) * len * t + nx * wob;
-      y0 = cy + Math.sin(ang) * len * t + ny * wob;
-      d += ` L ${Math.max(-5, Math.min(105, x0)).toFixed(1)} ${Math.max(-5, Math.min(105, y0)).toFixed(1)}`;
-      if (s > 1 && s < steps && rand() > 0.45) {
-        const fa = ang + (rand() > 0.5 ? 1 : -1) * (0.35 + rand() * 0.85);
-        const fl = len * (0.12 + rand() * 0.22) * (1 - t);
-        lines.push(
-          `M ${x0.toFixed(1)} ${y0.toFixed(1)} L ${(x0 + Math.cos(fa) * fl).toFixed(1)} ${(y0 + Math.sin(fa) * fl).toFixed(1)}`
-        );
+      x0 = Math.cos(ang) * len * t + nx * wob * (0.35 + t);
+      y0 = Math.sin(ang) * len * t + ny * wob * (0.35 + t);
+      d += ` L ${x0.toFixed(1)} ${y0.toFixed(1)}`;
+      if (long && s > 1 && s < steps && rand() > 0.38) {
+        const fa = ang + (rand() > 0.5 ? 1 : -1) * (0.25 + rand() * 0.95);
+        const fl = len * (0.1 + rand() * 0.22) * (1 - t * 0.35);
+        forks.push(`M ${x0.toFixed(1)} ${y0.toFixed(1)} L ${(x0 + Math.cos(fa) * fl).toFixed(1)} ${(y0 + Math.sin(fa) * fl).toFixed(1)}`);
       }
     }
-    lines.push(d);
+    rays.push(d);
   }
-  // Faint shard facets
-  for (let i = 0; i < 5; i++) {
-    const a0 = rand() * Math.PI * 2;
-    const a1 = a0 + 0.4 + rand() * 0.7;
-    const a2 = a0 - 0.3 - rand() * 0.5;
-    const r0 = 12 + rand() * 40;
-    const r1 = 10 + rand() * 36;
-    const r2 = 8 + rand() * 30;
-    shards.push(
-      `M ${(cx + Math.cos(a0) * r0).toFixed(1)} ${(cy + Math.sin(a0) * r0).toFixed(1)} L ${(cx + Math.cos(a1) * r1).toFixed(1)} ${(cy + Math.sin(a1) * r1).toFixed(1)} L ${(cx + Math.cos(a2) * r2).toFixed(1)} ${(cy + Math.sin(a2) * r2).toFixed(1)} Z`
+
+  const nSpeck = 2 + Math.floor(rand() * (4 + p * 4));
+  for (let i = 0; i < nSpeck; i++) {
+    const a = rand() * Math.PI * 2;
+    const dist = rand() * (5 + p * 12);
+    specks.push(
+      `<circle class="kirlian-glass-speck" cx="${(Math.cos(a) * dist).toFixed(1)}" cy="${(Math.sin(a) * dist).toFixed(1)}" r="${(0.2 + rand() * 0.45).toFixed(2)}" />`
     );
   }
-  return `<svg class="kirlian-shatter-overlay" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-    <g class="kirlian-shatter-facets">${shards.map((d) => `<path d="${d}" />`).join("")}</g>
-    <g class="kirlian-shatter-lines">${lines.map((d) => `<path d="${d}" />`).join("")}</g>
-  </svg>`;
+
+  return `<g class="kirlian-glass-rays">${rays.map((d) => `<path d="${d}" />`).join("")}</g>
+    <g class="kirlian-glass-forks">${forks.map((d) => `<path d="${d}" />`).join("")}</g>
+    <g class="kirlian-glass-specks">${specks.join("")}</g>`;
 }
 
-function burnSvgMarkup(mark) {
-  const p = mark.power;
-  const uid = `b${Math.round(mark.x * 999)}${Math.round(mark.y * 999)}${Math.round(mark.rot)}`;
-  // Keep light strikes readable — floor size so tiny taps still leave a scorch
-  const size = 26 + p * 34;
-  return `<svg class="kirlian-scar kirlian-scar-burn" viewBox="0 0 64 64" style="left:${(mark.x * 100).toFixed(1)}%;top:${(mark.y * 100).toFixed(1)}%;width:${size.toFixed(1)}%;height:${size.toFixed(1)}%;--p:${p.toFixed(2)};--rot:${mark.rot.toFixed(0)}deg">
-    <defs>
-      <radialGradient id="${uid}-core" cx="48%" cy="44%" r="55%">
-        <stop offset="0%" stop-color="rgba(12,6,3,0.95)"/>
-        <stop offset="35%" stop-color="rgba(28,12,6,0.9)"/>
-        <stop offset="62%" stop-color="rgba(72,28,10,0.62)"/>
-        <stop offset="82%" stop-color="rgba(140,55,18,0.34)"/>
-        <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-      </radialGradient>
-      <radialGradient id="${uid}-ember" cx="40%" cy="36%" r="40%">
-        <stop offset="0%" stop-color="rgba(255,170,70,${(0.4 + 0.25 * p).toFixed(2)})"/>
-        <stop offset="45%" stop-color="rgba(255,90,30,${(0.22 + 0.15 * p).toFixed(2)})"/>
-        <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-      </radialGradient>
-    </defs>
-    <ellipse cx="32" cy="33" rx="${(18 + p * 8).toFixed(1)}" ry="${(15 + p * 7).toFixed(1)}" fill="url(#${uid}-core)" transform="rotate(${(mark.rot % 40) - 20} 32 33)"/>
-    <ellipse cx="30" cy="30" rx="${(8 + p * 5).toFixed(1)}" ry="${(6 + p * 4).toFixed(1)}" fill="url(#${uid}-ember)"/>
-    <path d="M ${(20 + p * 4).toFixed(1)} ${(24 - p * 2).toFixed(1)} C 28 18, 38 20, ${(42 + p * 3).toFixed(1)} ${(26 + p).toFixed(1)} C 46 34, 40 44, 32 46 C 22 47, 16 38, ${(20 + p * 4).toFixed(1)} ${(24 - p * 2).toFixed(1)} Z" fill="rgba(8,4,2,${(0.4 + p * 0.35).toFixed(2)})" opacity="0.9"/>
-    <circle cx="26" cy="28" r="${(1.2 + p).toFixed(1)}" fill="rgba(255,140,50,${(0.3 + 0.2 * p).toFixed(2)})"/>
-    <circle cx="36" cy="34" r="${(0.8 + p * 0.7).toFixed(1)}" fill="rgba(255,100,40,${(0.25 + 0.15 * p).toFixed(2)})"/>
-  </svg>`;
-}
-
-function holeSvgMarkup(mark) {
-  const p = mark.power;
-  const uid = `h${Math.round(mark.x * 999)}${Math.round(mark.y * 999)}${Math.round(mark.rot)}`;
-  const rand = scarSeedRand(((mark.rot * 51) | 0) + 17);
-  // Irregular torn void polygon
-  const pts = [];
-  const n = 9 + Math.floor(p * 5);
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2;
-    const r = 11 + p * 7 + (rand() - 0.5) * (4 + p * 5);
-    pts.push(`${(32 + Math.cos(a) * r).toFixed(1)},${(32 + Math.sin(a) * r).toFixed(1)}`);
+function glassCrackGroupAt(ox, oy, power, cacheKey, { hard = false } = {}) {
+  let inner = glassCrackShapeCache.get(cacheKey);
+  if (!inner) {
+    inner = glassCrackInner(power, hashScarSeed(cacheKey), hard);
+    glassCrackShapeCache.set(cacheKey, inner);
   }
-  return `<svg class="kirlian-scar kirlian-scar-hole" viewBox="0 0 64 64" style="left:${(mark.x * 100).toFixed(1)}%;top:${(mark.y * 100).toFixed(1)}%;width:${(20 + p * 36).toFixed(1)}%;height:${(20 + p * 36).toFixed(1)}%;--p:${p.toFixed(2)};--rot:${mark.rot.toFixed(0)}deg">
-    <defs>
-      <radialGradient id="${uid}-void" cx="50%" cy="48%" r="55%">
-        <stop offset="0%" stop-color="rgba(0,0,0,1)"/>
-        <stop offset="55%" stop-color="rgba(6,3,2,0.96)"/>
-        <stop offset="78%" stop-color="rgba(28,12,6,0.55)"/>
-        <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-      </radialGradient>
-      <radialGradient id="${uid}-rim" cx="42%" cy="36%" r="60%">
-        <stop offset="0%" stop-color="rgba(255,160,70,${(0.22 * p).toFixed(2)})"/>
-        <stop offset="40%" stop-color="rgba(90,35,12,0.45)"/>
-        <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-      </radialGradient>
-    </defs>
-    <polygon points="${pts.join(" ")}" fill="url(#${uid}-rim)" opacity="0.9"/>
-    <polygon points="${pts.join(" ")}" fill="url(#${uid}-void)" transform="translate(32 32) scale(0.82) translate(-32 -32)"/>
-    <polygon points="${pts.join(" ")}" fill="none" stroke="rgba(40,18,8,0.85)" stroke-width="1.2"/>
-    <polygon points="${pts.join(" ")}" fill="none" stroke="rgba(255,150,80,${(0.18 * p).toFixed(2)})" stroke-width="0.5" opacity="0.8"/>
-  </svg>`;
+  return `<g class="kirlian-glass-burst${hard ? " kirlian-glass-hard" : ""}" style="--p:${Math.max(0.25, Math.min(1, power)).toFixed(2)}" transform="translate(${ox.toFixed(1)} ${oy.toFixed(1)})">${inner}</g>`;
+}
+
+function pruneGlassCrackCache(liveKeys) {
+  for (const key of [...glassCrackShapeCache.keys()]) {
+    if (!liveKeys.has(key)) glassCrackShapeCache.delete(key);
+  }
+}
+
+/** Screen-wide glass overlay so cracks are not clipped by cards/rows. */
+function syncKirlianGlassOverlay() {
+  let layer = document.getElementById("kirlian-glass-layer");
+  if (!layer) {
+    layer = document.createElement("div");
+    layer.id = "kirlian-glass-layer";
+    layer.setAttribute("aria-hidden", "true");
+    document.body.appendChild(layer);
+  }
+  const hosts = document.querySelectorAll(".kirlian-wounded, .kirlian-shattered");
+  if (!hosts.length) {
+    layer.innerHTML = "";
+    return;
+  }
+  const W = Math.max(1, window.innerWidth);
+  const H = Math.max(1, window.innerHeight);
+  const groups = [];
+  const liveKeys = new Set();
+  hosts.forEach((host) => {
+    if (!host.isConnected || host.hidden) return;
+    const box = host.getBoundingClientRect();
+    if (box.width < 4 || box.height < 4) return;
+    const id = assignKirlianElementId(host);
+    const rec = getElementDamageRecord(id);
+    const marks = Array.isArray(rec.marks) ? rec.marks.map(normalizeScarMark).filter(Boolean) : [];
+    marks.forEach((m) => {
+      const key = `mark:${id}:${m.id}`;
+      liveKeys.add(key);
+      const ox = box.left + m.x * box.width;
+      const oy = box.top + m.y * box.height;
+      groups.push(glassCrackGroupAt(ox, oy, m.power, key, { hard: m.kind === "hole" }));
+    });
+    if (rec.shattered) {
+      const key = `shatter:${id}`;
+      liveKeys.add(key);
+      const ox = box.left + (rec.sx ?? 0.5) * box.width;
+      const oy = box.top + (rec.sy ?? 0.5) * box.height;
+      groups.push(glassCrackGroupAt(ox, oy, 1, key, { hard: true }));
+    }
+  });
+  pruneGlassCrackCache(liveKeys);
+  layer.innerHTML = groups.length
+    ? `<svg class="kirlian-glass-screen" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" preserveAspectRatio="none">${groups.join("")}</svg>`
+    : "";
+}
+
+function wireKirlianGlassOverlay() {
+  if (wireKirlianGlassOverlay.wired) return;
+  wireKirlianGlassOverlay.wired = true;
+  const sync = () => syncKirlianGlassOverlay();
+  window.addEventListener("resize", sync, { passive: true });
+  window.addEventListener("scroll", sync, { capture: true, passive: true });
+  document.getElementById("views")?.addEventListener("scroll", sync, { passive: true });
 }
 
 function renderScarLayer(host, marks) {
-  let layer = host.querySelector(":scope > .kirlian-scar-layer");
-  const shattered = host.classList.contains("kirlian-shattered");
-  const scars = (marks || [])
-    .filter((m) => m.kind === "hole" || m.kind === "burn")
-    .map((m) => (m.kind === "hole" ? holeSvgMarkup(m) : burnSvgMarkup(m)))
-    .join("");
-  const shatter = shattered
-    ? shatterOverlayMarkup(
-        Number(host.dataset.kirlianSx) || 0.5,
-        Number(host.dataset.kirlianSy) || 0.5,
-        (host.dataset.kirlianId || "").length || 1
-      )
-    : "";
-  if (!scars && !shatter) {
-    layer?.remove();
-    return;
-  }
-  if (!layer) {
-    layer = document.createElement("div");
-    layer.className = "kirlian-scar-layer";
-    layer.setAttribute("aria-hidden", "true");
-    host.appendChild(layer);
-  }
-  layer.innerHTML = shatter + scars;
+  // Scars live on the screen overlay so they can cross element bounds.
+  host?.querySelector(":scope > .kirlian-scar-layer")?.remove();
+  syncKirlianGlassOverlay();
 }
 
 function paintKirlianWoundVisual(el, rec) {
@@ -5609,11 +5641,11 @@ function paintKirlianWoundVisual(el, rec) {
   }
   if (wounded) host.style.setProperty("--kirlian-dmg", (Math.max(dmg, marks.length * 8) / 100).toFixed(3));
   else host.style.removeProperty("--kirlian-dmg");
-  renderScarLayer(host, marks);
   if (!wounded) {
     host.classList.remove("kirlian-wounded", "kirlian-shattered");
     host.querySelector(":scope > .kirlian-scar-layer")?.remove();
   }
+  syncKirlianGlassOverlay();
 }
 
 /**
@@ -5672,6 +5704,7 @@ function applyKirlianStrikeToElement(el, blastPower, hit = null) {
     // Light strikes still leave a visible scorch; stronger hits dig deeper
     const scarPower = Math.max(0.38, Math.min(1, 0.28 + amount / 22));
     marks.push({
+      id: newScarMarkId(),
       x: rx,
       y: ry,
       kind: scarKindFromHit(rx, ry, amount),
@@ -6414,6 +6447,7 @@ function wireKirlian() {
 function wire() {
   wireHomePager();
   wireKirlian();
+  wireKirlianGlassOverlay();
   wireHoldingsSort();
   wirePortfolioListReorder();
   wireBuySell();
@@ -6582,6 +6616,10 @@ function wire() {
   });
   document.getElementById("settings-lightning-strikes")?.addEventListener("change", (e) => {
     setLightningStrikes(e.target.checked);
+  });
+  document.getElementById("btn-clear-damage")?.addEventListener("click", () => {
+    clearAllElementDamage();
+    toast("Lightning damage cleared", "success");
   });
 
   document.getElementById("btn-save-fee").addEventListener("click", () => {
