@@ -5493,14 +5493,60 @@ const glassCrackShapeCache = new Map();
 /**
  * Crack burst around local origin (0,0). Shape is cached; only the translate moves.
  */
+/** Irregular partial ring — radius wobbles, kinks, and gaps like real glass. */
+function glassImperfectRing(r, start, sweep, rand) {
+  const dir = sweep >= 0 ? 1 : -1;
+  const total = Math.abs(sweep);
+  const steps = 8 + Math.floor(rand() * 8);
+  let d = "";
+  let penDown = false;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const ang = start + dir * total * t;
+    const wobble = 1 + (rand() - 0.5) * 0.38 + Math.sin(t * 9 + rand() * 4) * 0.12;
+    const rr = r * wobble + (rand() - 0.5) * (r * 0.18);
+    const x = Math.cos(ang) * rr;
+    const y = Math.sin(ang) * rr;
+    // Occasional gaps so it isn't one clean arc
+    if (i > 0 && i < steps && rand() > 0.86) {
+      penDown = false;
+      continue;
+    }
+    if (!penDown) {
+      d += `M ${x.toFixed(2)} ${y.toFixed(2)}`;
+      penDown = true;
+    } else {
+      d += ` L ${x.toFixed(2)} ${y.toFixed(2)}`;
+    }
+    // Tiny radial chip off the ring
+    if (penDown && i > 1 && i < steps && rand() > 0.78) {
+      const chip = (rand() > 0.5 ? 1 : -1) * (1.2 + rand() * 2.8);
+      d += ` L ${(Math.cos(ang) * (rr + chip)).toFixed(2)} ${(Math.sin(ang) * (rr + chip)).toFixed(2)}`;
+      d += ` M ${x.toFixed(2)} ${y.toFixed(2)}`;
+    }
+  }
+  return d;
+}
+
 function glassCrackInner(power, seedBase, hard) {
   const rand = scarSeedRand(seedBase);
   const p = Math.max(0.25, Math.min(1, power));
   const rays = [];
   const forks = [];
+  const rings = [];
   const specks = [];
-  const starR = 1.1 + p * (hard ? 2.4 : 1.6);
+  // Impact point: randomly small or larger, like damage.png
+  const starR = (hard ? 1.2 : 0.55) + rand() * (hard ? 5.5 : 3.8);
   specks.push(`<circle class="kirlian-glass-origin" cx="0" cy="0" r="${starR.toFixed(2)}" />`);
+
+  // Partial, imperfect rings around the origin (not a clean circle)
+  const ringN = 1 + (rand() > 0.4 ? 1 : 0) + (hard && rand() > 0.5 ? 1 : 0);
+  for (let i = 0; i < ringN; i++) {
+    const r = starR * (2.2 + i * 1.4) + rand() * (3 + p * 6);
+    const start = rand() * Math.PI * 2;
+    const sweep = (0.4 + rand() * 1.25) * Math.PI * (rand() > 0.5 ? 1 : -1);
+    rings.push(glassImperfectRing(r, start, sweep, rand));
+  }
 
   // Random count of cracks from the impact — not a fixed ring
   const minN = hard ? 4 : 3;
@@ -5544,6 +5590,7 @@ function glassCrackInner(power, seedBase, hard) {
 
   return `<g class="kirlian-glass-rays">${rays.map((d) => `<path d="${d}" />`).join("")}</g>
     <g class="kirlian-glass-forks">${forks.map((d) => `<path d="${d}" />`).join("")}</g>
+    <g class="kirlian-glass-rings">${rings.map((d) => `<path d="${d}" />`).join("")}</g>
     <g class="kirlian-glass-specks">${specks.join("")}</g>`;
 }
 
