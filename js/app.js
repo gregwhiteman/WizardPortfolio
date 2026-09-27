@@ -705,6 +705,32 @@ function setLightningStrikes(on) {
   return store.lightningStrikes;
 }
 
+function getLightningDamage() {
+  return store.lightningDamage !== false;
+}
+
+function setLightningDamage(on) {
+  store.lightningDamage = !!on;
+  saveStore();
+  if (!store.lightningDamage) {
+    document.querySelectorAll(".kirlian-wounded, .kirlian-shattered, .kirlian-hit-damage, .kirlian-hit-heal, .kirlian-charge-heal").forEach((el) => {
+      el.classList.remove(
+        "kirlian-wounded",
+        "kirlian-shattered",
+        "kirlian-hit-damage",
+        "kirlian-hit-heal",
+        "kirlian-charge-heal"
+      );
+      el.style.removeProperty("--kirlian-dmg");
+    });
+    const layer = document.getElementById("kirlian-glass-layer");
+    if (layer) layer.innerHTML = "";
+  } else {
+    restoreKirlianWounds();
+  }
+  return store.lightningDamage;
+}
+
 function normalizeAssetRiskMap(raw) {
   const out = {};
   if (!raw || typeof raw !== "object") return out;
@@ -806,6 +832,7 @@ function defaultStore() {
     exchangeFeePct: 0,
     lightningPower: 2,
     lightningStrikes: true,
+    lightningDamage: true,
     customAssets: [],
     lastQuotes: {},
     priceHistory: {},
@@ -829,6 +856,7 @@ function normalizeLoadedStore(parsed) {
   parsed.exchangeFeePct = normalizeExchangeFeePct(parsed.exchangeFeePct);
   parsed.lightningPower = normalizeLightningPower(parsed.lightningPower);
   parsed.lightningStrikes = parsed.lightningStrikes !== false;
+  parsed.lightningDamage = parsed.lightningDamage !== false;
   parsed.customAssets = normalizeCustomAssets(parsed.customAssets);
   parsed.lastQuotes = parsed.lastQuotes && typeof parsed.lastQuotes === "object" ? parsed.lastQuotes : {};
   parsed.priceHistory = normalizePriceHistory(parsed.priceHistory);
@@ -1031,6 +1059,7 @@ function loadStore() {
         exchangeFeePct: 0,
         lightningPower: 2,
         lightningStrikes: true,
+        lightningDamage: true,
         customAssets: [],
         lastQuotes: {},
         priceHistory: {},
@@ -1836,34 +1865,107 @@ function parseNasdaqInfo(data) {
   return { usd: price, change24h: Number.isFinite(change24h) ? change24h : 0 };
 }
 
-async function fetchStockQuote(symbol) {
-  const sym = String(symbol || "").trim();
-  if (!sym) return null;
-  const enc = encodeURIComponent(sym);
-  // Yahoo blocks browser CORS — proxy only. Keep this short: one Yahoo host,
-  // at most 2 proxies, then a single Nasdaq fallback.
-  const yahoo = `https://query1.finance.yahoo.com/v8/finance/chart/${enc}?interval=1d&range=1d`;
+function toStooqSymbol(yahoo) {
+  const s = String(yahoo || "").trim().toLowerCase();
+  if (!s) return "";
+  if (s.endsWith("=f")) return `${s.slice(0, -2)}.f`;
+  if (!s.includes(".")) return `${s}.us`;
+  return s;
+}
+
+function parseStooqCsv(text) {
+  const lines = String(text || "")
+    .trim()
+    .split(/\r?\n/)
+    .filter(Boolean);
+  if (lines.length < 2) return null;
+  const cols = lines[1].split(",");
+  // Symbol,Date,Time,Open,High,Low,Close,Volume
+  const close = Number(cols[6]);
+  const open = Number(cols[3]);
+  if (!Number.isFinite(close) || close <= 0) return null;
+  const change24h = Number.isFinite(open) && open > 0 ? ((close - open) / open) * 100 : 0;
+  return { usd: close, change24h };
+}
+
+async function fetchTextLogged(url, timeoutMs, ticker) {
+  logApiCall(ticker, url);
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const data = await fetchViaProxy(yahoo, 4000, sym, { maxProxies: 2 });
-    const q = parseYahooChart(data);
-    if (q) return q;
-  } catch {
-    /* nasdaq next */
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.text();
+  } finally {
+    clearTimeout(t);
   }
-  const ns = encodeURIComponent(sym.replace(/-/g, "."));
+}
+
+function textFromProxyBody(raw) {
+  const s = String(raw || "").trim();
+  if (s.startsWith("{") || s.startsWith("[")) {
+    try {
+      const j = JSON.parse(s);
+      if (typeof j?.contents === "string") return j.contents;
+    } catch {
+      /* not JSON wrapper */
+    }
+  }
+  return s;
+}
+
+/** Stooq CSV — never fetch stooq.com directly (no CORS). Proxy only. */
+async function fetchStooqQuote(symbol) {
+  const s = toStooqSymbol(symbol);
+  if (!s) return null;
+  const target = `https://stooq.com/q/l/?s=${encodeURIComponent(s)}&f=sd2t2ohlcv&h&e=csv`;
+  for (const u of proxyUrls(target).slice(0, 2)) {
+    try {
+      const text = textFromProxyBody(await fetchTextLogged(u, 4000, symbol));
+      const q = parseStooqCsv(text);
+      if (q) return q;
+    } catch {
+      /* try next proxy */
+    }
+  }
+  return null;
+}
+
+async function fetchNasdaqQuote(symbol) {
+  const ns = encodeURIComponent(String(symbol).replace(/-/g, "."));
   try {
     const data = await fetchViaProxy(
       `https://api.nasdaq.com/api/quote/${ns}/info?assetclass=stocks`,
       3500,
-      sym,
+      symbol,
       { maxProxies: 1 }
     );
-    const q = parseNasdaqInfo(data);
-    if (q) return q;
+    return parseNasdaqInfo(data);
   } catch {
-    /* none */
+    return null;
   }
-  return null;
+}
+
+async function fetchYahooQuote(symbol) {
+  const enc = encodeURIComponent(symbol);
+  const yahoo = `https://query1.finance.yahoo.com/v8/finance/chart/${enc}?interval=1d&range=1d`;
+  try {
+    const data = await fetchViaProxy(yahoo, 4000, symbol, { maxProxies: 2 });
+    return parseYahooChart(data);
+  } catch {
+    return null;
+  }
+}
+
+async function fetchStockQuote(symbol) {
+  const sym = String(symbol || "").trim();
+  if (!sym) return null;
+  // Yahoo is CORS-blocked and proxies flake. Prefer Stooq (often direct), then Nasdaq, Yahoo last.
+  return (
+    (await fetchStooqQuote(sym)) ||
+    (await fetchNasdaqQuote(sym)) ||
+    (await fetchYahooQuote(sym))
+  );
 }
 
 async function fetchCryptoQuote(asset) {
@@ -2023,12 +2125,10 @@ async function fetchCryptoPricesBatch(next, cryptos) {
       if (!row) continue;
       const usd = Number(row.current_price);
       if (!Number.isFinite(usd) || usd <= 0) continue;
-      next[coin.id] = {
+      applyLiveQuote(next, coin.id, {
         usd,
         change24h: Number(row.price_change_percentage_24h) || 0,
-      };
-      prices[coin.id] = next[coin.id];
-      freshQuoteIds.add(coin.id);
+      });
     }
   }
   if (gotGecko) return;
@@ -2054,16 +2154,29 @@ async function fetchCryptoPricesBatch(next, cryptos) {
       if (!row) continue;
       const usd = Number(row.priceUsd);
       if (!Number.isFinite(usd) || usd <= 0) continue;
-      next[coin.id] = {
+      applyLiveQuote(next, coin.id, {
         usd,
         change24h: Number(row.changePercent24Hr) || 0,
-      };
-      prices[coin.id] = next[coin.id];
-      freshQuoteIds.add(coin.id);
+      });
     }
   } catch {
     /* keep last quotes */
   }
+}
+
+/** Commit one live quote and redraw so the hoard updates as each relic lands. */
+function applyLiveQuote(next, id, q) {
+  if (!id || !q || !Number.isFinite(Number(q.usd)) || Number(q.usd) <= 0) return false;
+  next[id] = q;
+  prices[id] = q;
+  freshQuoteIds.add(id);
+  rememberQuotes({ [id]: q });
+  quotingIds.delete(id);
+  paintAvatarQuoteState(id);
+  if (nav.view === "home" || nav.view === "portfolio" || nav.view === "asset" || nav.view === "tv") {
+    render();
+  }
+  return true;
 }
 
 /**
@@ -2106,11 +2219,7 @@ async function fetchPrices() {
       paintAvatarQuoteState(asset.id);
       try {
         const q = await fetchStockQuote(asset.yahooSymbol);
-        if (q && Number.isFinite(q.usd) && q.usd > 0) {
-          next[asset.id] = q;
-          prices[asset.id] = q;
-          freshQuoteIds.add(asset.id);
-        }
+        if (q) applyLiveQuote(next, asset.id, q);
       } catch {
         /* keep last quote */
       } finally {
@@ -3822,6 +3931,8 @@ function renderSettings() {
   if (lightningVal) lightningVal.textContent = String(power);
   const strikeToggle = document.getElementById("settings-lightning-strikes");
   if (strikeToggle) strikeToggle.checked = getLightningStrikes();
+  const damageToggle = document.getElementById("settings-lightning-damage");
+  if (damageToggle) damageToggle.checked = getLightningDamage();
 
   const { perPf } = allPortfoliosTotals();
   const list = document.getElementById("portfolio-list");
@@ -4945,6 +5056,7 @@ function importData(file) {
           data.lightningPower != null ? data.lightningPower : getLightningPower()
         ),
         lightningStrikes: data.lightningStrikes != null ? !!data.lightningStrikes : getLightningStrikes(),
+        lightningDamage: data.lightningDamage != null ? !!data.lightningDamage : getLightningDamage(),
         customAssets: normalizeCustomAssets(
           data.customAssets != null ? data.customAssets : store.customAssets
         ),
@@ -5611,6 +5723,11 @@ function pruneGlassCrackCache(liveKeys) {
 
 /** Screen-wide glass overlay so cracks are not clipped by cards/rows. */
 function syncKirlianGlassOverlay() {
+  if (!getLightningDamage()) {
+    const layerOff = document.getElementById("kirlian-glass-layer");
+    if (layerOff) layerOff.innerHTML = "";
+    return;
+  }
   let layer = document.getElementById("kirlian-glass-layer");
   if (!layer) {
     layer = document.createElement("div");
@@ -5733,6 +5850,7 @@ function healScarMarksNear(marks, healAmount, hx, hy, radius = 0.28) {
 
 /** Apply red damage or green heal when a bolt lands on an element. */
 function applyKirlianStrikeToElement(el, blastPower, hit = null) {
+  if (!getLightningDamage()) return;
   const host = ensureKirlianWoundHost(el);
   if (!host) return;
   const kind = kirlianStrikeKind();
@@ -5790,7 +5908,7 @@ function kirlianHealPulseCount(blastPower) {
  * @param {"strike"|"touch"} mode strike = near-scar only; touch = charge-on-element mend
  */
 function pulseKirlianGreenThenHeal(host, id, amount, rx, ry, blastPower, mode = "strike") {
-  if (!host) return;
+  if (!host || !getLightningDamage()) return;
   const pulses = kirlianHealPulseCount(blastPower);
   const pulseMs = 420;
   const totalMs = pulses * pulseMs;
@@ -5840,6 +5958,11 @@ function pulseKirlianGreenThenHeal(host, id, amount, rx, ry, blastPower, mode = 
 
 /** Re-apply saved wounds after DOM rebuilds / page load. */
 function restoreKirlianWounds() {
+  if (!getLightningDamage()) {
+    const layer = document.getElementById("kirlian-glass-layer");
+    if (layer) layer.innerHTML = "";
+    return;
+  }
   if (!store?.elementDamage || !Object.keys(store.elementDamage).length) return;
   const nodes = document.querySelectorAll(
     "#app .view.view-active div, #app .view.view-active button, #app .view.view-active h2, #app .holding-row, #app .summary-card, #app .pf-card, #app .settings-group, #app .topbar, #app .brand, #app .coin-avatar, #app .field-input, .modal.sheet, #app .home-pane div, #app .home-pane button"
@@ -6361,7 +6484,7 @@ function wireKirlian() {
   function syncChargeHealPreview(t) {
       // Green mode: holding on a wounded element pulses a mend preview while charging
       const prev = t.chargeHealEl;
-      if (kirlianStrikeKind() !== "heal" || !t.held || t.blast) {
+      if (!getLightningDamage() || kirlianStrikeKind() !== "heal" || !t.held || t.blast) {
         if (prev) {
           prev.classList.remove("kirlian-charge-heal");
           t.chargeHealEl = null;
@@ -6663,6 +6786,10 @@ function wire() {
   });
   document.getElementById("settings-lightning-strikes")?.addEventListener("change", (e) => {
     setLightningStrikes(e.target.checked);
+  });
+  document.getElementById("settings-lightning-damage")?.addEventListener("change", (e) => {
+    setLightningDamage(e.target.checked);
+    toast(e.target.checked ? "Element damage on" : "Element damage off");
   });
   document.getElementById("btn-clear-damage")?.addEventListener("click", () => {
     clearAllElementDamage();
