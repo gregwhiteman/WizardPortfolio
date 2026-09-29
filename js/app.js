@@ -1448,10 +1448,12 @@ function isCorsBlockedFinanceUrl(url) {
 let lastGoodProxyIndex = 0;
 
 function proxyUrls(url) {
+  const enc = encodeURIComponent(url);
   const all = [
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+    `https://api.allorigins.win/raw?url=${enc}`,
+    `https://api.allorigins.win/get?url=${enc}`,
+    `https://api.codetabs.com/v1/proxy?quest=${enc}`,
+    `https://corsproxy.io/?${enc}`,
   ];
   if (!lastGoodProxyIndex) return all;
   const i = lastGoodProxyIndex % all.length;
@@ -1485,31 +1487,46 @@ async function fetchJsonRaw(url, options = {}, timeoutMs = 15000, ticker = "—"
       const body = await res.text().catch(() => "");
       throw new Error(`HTTP ${res.status}${body ? `: ${body.slice(0, 100)}` : ""}`);
     }
-    return await res.json();
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
   } finally {
     clearTimeout(timer);
   }
 }
 
 function unwrapJson(data) {
+  if (typeof data === "string") {
+    const s = data.trim();
+    if (s.startsWith("{") || s.startsWith("[")) {
+      try {
+        return unwrapJson(JSON.parse(s));
+      } catch {
+        return data;
+      }
+    }
+    return data;
+  }
   if (data && typeof data.contents === "string") {
     try {
       return JSON.parse(data.contents);
     } catch {
-      /* keep */
+      return data.contents;
     }
   }
   return data;
 }
 
-async function fetchViaProxy(url, timeoutMs = 7000, ticker = "—", { maxProxies = 2 } = {}) {
+async function fetchViaProxy(url, timeoutMs = 7000, ticker = "—", { maxProxies = 4 } = {}) {
   let lastErr;
   const urls = proxyUrls(url).slice(0, Math.max(1, maxProxies));
   for (let i = 0; i < urls.length; i++) {
     try {
       const data = unwrapJson(await fetchJsonRaw(urls[i], {}, timeoutMs, ticker));
-      // Remember which proxy slot succeeded (relative to rotated list)
-      lastGoodProxyIndex = (lastGoodProxyIndex + i) % 3;
+      lastGoodProxyIndex = (lastGoodProxyIndex + i) % proxyUrls(url).length;
       return data;
     } catch (err) {
       lastErr = err;
@@ -1936,9 +1953,9 @@ async function fetchNasdaqQuote(symbol) {
   try {
     const data = await fetchViaProxy(
       `https://api.nasdaq.com/api/quote/${ns}/info?assetclass=stocks`,
-      3500,
+      5000,
       symbol,
-      { maxProxies: 1 }
+      { maxProxies: 3 }
     );
     return parseNasdaqInfo(data);
   } catch {
@@ -1948,24 +1965,111 @@ async function fetchNasdaqQuote(symbol) {
 
 async function fetchYahooQuote(symbol) {
   const enc = encodeURIComponent(symbol);
-  const yahoo = `https://query1.finance.yahoo.com/v8/finance/chart/${enc}?interval=1d&range=1d`;
-  try {
-    const data = await fetchViaProxy(yahoo, 4000, symbol, { maxProxies: 2 });
-    return parseYahooChart(data);
-  } catch {
-    return null;
+  const hosts = [
+    `https://query1.finance.yahoo.com/v8/finance/chart/${enc}?interval=1d&range=1d`,
+    `https://query2.finance.yahoo.com/v8/finance/chart/${enc}?interval=1d&range=1d`,
+  ];
+  for (const yahoo of hosts) {
+    try {
+      const data = await fetchViaProxy(yahoo, 5000, symbol, { maxProxies: 4 });
+      const q = parseYahooChart(data);
+      if (q) return q;
+    } catch {
+      /* next host */
+    }
   }
+  return null;
 }
 
 async function fetchStockQuote(symbol) {
   const sym = String(symbol || "").trim();
   if (!sym) return null;
-  // Yahoo is CORS-blocked and proxies flake. Prefer Stooq (often direct), then Nasdaq, Yahoo last.
   return (
-    (await fetchStooqQuote(sym)) ||
+    (await fetchYahooQuote(sym)) ||
     (await fetchNasdaqQuote(sym)) ||
-    (await fetchYahooQuote(sym))
+    (await fetchStooqQuote(sym))
   );
+}
+
+const COINBASE_PAIRS = {
+  bitcoin: "BTC-USD",
+  ripple: "XRP-USD",
+  stellar: "XLM-USD",
+  "hedera-hashgraph": "HBAR-USD",
+  cardano: "ADA-USD",
+  dogecoin: "DOGE-USD",
+  litecoin: "LTC-USD",
+};
+
+const BINANCE_PAIRS = {
+  bitcoin: "BTCUSDT",
+  ripple: "XRPUSDT",
+  stellar: "XLMUSDT",
+  "hedera-hashgraph": "HBARUSDT",
+  cardano: "ADAUSDT",
+  dogecoin: "DOGEUSDT",
+  litecoin: "LTCUSDT",
+};
+
+async function fetchGeckoSimpleQuote(asset) {
+  const id = asset?.geckoId;
+  if (!id) return null;
+  const ticker = String(asset.symbol || id).toUpperCase();
+  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(id)}&vs_currencies=usd&include_24hr_change=true`;
+  try {
+    const data = await fetchJson(url, {}, 8000, ticker);
+    const row = data?.[id];
+    const usd = Number(row?.usd);
+    if (!Number.isFinite(usd) || usd <= 0) return null;
+    return { usd, change24h: Number(row.usd_24h_change) || 0 };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchCoinCapQuote(asset) {
+  const capId = GECKO_TO_COINCAP[asset?.geckoId];
+  if (!capId) return null;
+  const ticker = String(asset.symbol || capId).toUpperCase();
+  const url = `https://api.coincap.io/v2/assets/${encodeURIComponent(capId)}`;
+  try {
+    const data = await fetchJson(url, {}, 8000, ticker);
+    const usd = Number(data?.data?.priceUsd);
+    if (!Number.isFinite(usd) || usd <= 0) return null;
+    return { usd, change24h: Number(data.data.changePercent24Hr) || 0 };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchCoinbaseSpot(asset) {
+  const pair = COINBASE_PAIRS[asset?.geckoId] || `${String(asset?.symbol || "").toUpperCase()}-USD`;
+  if (!pair || pair.startsWith("-")) return null;
+  const ticker = String(asset.symbol || pair).toUpperCase();
+  const url = `https://api.coinbase.com/v2/prices/${encodeURIComponent(pair)}/spot`;
+  try {
+    const data = await fetchJson(url, {}, 6000, ticker);
+    const usd = Number(data?.data?.amount);
+    if (!Number.isFinite(usd) || usd <= 0) return null;
+    return { usd, change24h: 0 };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchBinanceQuote(asset) {
+  const pair = BINANCE_PAIRS[asset?.geckoId];
+  if (!pair) return null;
+  const ticker = String(asset.symbol || pair).toUpperCase();
+  const url = `https://api.binance.com/api/v3/ticker/24hr?symbol=${encodeURIComponent(pair)}`;
+  try {
+    const data = await fetchJson(url, {}, 6000, ticker);
+    const usd = Number(data?.lastPrice || data?.weightedAvgPrice);
+    if (!Number.isFinite(usd) || usd <= 0) return null;
+    return { usd, change24h: Number(data.priceChangePercent) || 0 };
+  } catch {
+    return null;
+  }
 }
 
 async function fetchCryptoQuote(asset) {
@@ -1975,32 +2079,19 @@ async function fetchCryptoQuote(asset) {
   if (Array.isArray(rows) && rows.length) {
     const row = rows.find((r) => r.id === asset.geckoId) || rows[0];
     const usd = Number(row?.current_price);
-    if (Number.isFinite(usd)) {
+    if (Number.isFinite(usd) && usd > 0) {
       return {
         usd,
         change24h: Number(row.price_change_percentage_24h) || 0,
       };
     }
   }
-  const capId = GECKO_TO_COINCAP[asset.geckoId];
-  if (!capId) return null;
-  try {
-    const data = await fetchJsonRaw(
-      `https://api.coincap.io/v2/assets/${encodeURIComponent(capId)}`,
-      {},
-      8000,
-      ticker
-    );
-    const row = data?.data;
-    const usd = Number(row?.priceUsd);
-    if (!Number.isFinite(usd)) return null;
-    return {
-      usd,
-      change24h: Number(row.changePercent24Hr) || 0,
-    };
-  } catch {
-    return null;
-  }
+  return (
+    (await fetchGeckoSimpleQuote(asset)) ||
+    (await fetchCoinCapQuote(asset)) ||
+    (await fetchCoinbaseSpot(asset)) ||
+    (await fetchBinanceQuote(asset))
+  );
 }
 
 /** Look up one relic's live quote and store it for the chart/hoard. */
@@ -2064,16 +2155,10 @@ async function fetchGeckoMarkets(ids, ticker = null) {
     "—";
   const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids.join(",")}&order=market_cap_desc&per_page=50&page=1&sparkline=false&price_change_percentage=24h`;
   try {
-    const data = await fetchJsonRaw(url, {}, 12000, label);
+    const data = await fetchJson(url, {}, 12000, label);
     if (Array.isArray(data)) return data;
   } catch {
-    /* proxy / coincap next */
-  }
-  try {
-    const data = await fetchViaProxy(url, 12000, label);
-    if (Array.isArray(data)) return data;
-  } catch {
-    /* coincap next */
+    /* coincap / per-coin next */
   }
   return null;
 }
@@ -2109,16 +2194,18 @@ function chunk(arr, size) {
   return out;
 }
 
-/** Batch crypto quotes in one CoinGecko call (fast path), CoinCap fallback. */
+function cryptoStillNeeded(cryptos) {
+  return cryptos.filter((c) => !freshQuoteIds.has(c.id));
+}
+
+/** Batch crypto quotes, then per-coin backups for anything still missing. */
 async function fetchCryptoPricesBatch(next, cryptos) {
   if (!cryptos?.length) return;
   const ids = [...new Set(cryptos.map((c) => c.geckoId).filter(Boolean))];
-  let gotGecko = false;
   for (const group of chunk(ids, 50)) {
     const groupAssets = cryptos.filter((c) => group.includes(c.geckoId));
     const rows = await fetchGeckoMarkets(group, tickerLabelForAssets(groupAssets));
     if (!rows) continue;
-    gotGecko = true;
     const byGecko = Object.fromEntries(rows.map((r) => [r.id, r]));
     for (const coin of cryptos) {
       const row = byGecko[coin.geckoId];
@@ -2131,36 +2218,47 @@ async function fetchCryptoPricesBatch(next, cryptos) {
       });
     }
   }
-  if (gotGecko) return;
 
-  // CoinCap batch fallback
-  const capIds = [
-    ...new Set(cryptos.map((c) => GECKO_TO_COINCAP[c.geckoId] || null).filter(Boolean)),
-  ];
-  if (!capIds.length) return;
-  try {
-    const data = await fetchJsonRaw(
-      `https://api.coincap.io/v2/assets?ids=${encodeURIComponent(capIds.join(","))}`,
-      {},
-      8000,
-      tickerLabelForAssets(cryptos)
-    );
-    const rows = data?.data;
-    if (!Array.isArray(rows)) return;
-    const byCap = Object.fromEntries(rows.map((r) => [r.id, r]));
-    for (const coin of cryptos) {
-      const capId = GECKO_TO_COINCAP[coin.geckoId];
-      const row = capId && byCap[capId];
-      if (!row) continue;
-      const usd = Number(row.priceUsd);
-      if (!Number.isFinite(usd) || usd <= 0) continue;
-      applyLiveQuote(next, coin.id, {
-        usd,
-        change24h: Number(row.changePercent24Hr) || 0,
-      });
+  let missing = cryptoStillNeeded(cryptos);
+  if (!missing.length) return;
+
+  const capIds = [...new Set(missing.map((c) => GECKO_TO_COINCAP[c.geckoId] || null).filter(Boolean))];
+  if (capIds.length) {
+    try {
+      const data = await fetchJson(
+        `https://api.coincap.io/v2/assets?ids=${encodeURIComponent(capIds.join(","))}`,
+        {},
+        8000,
+        tickerLabelForAssets(missing)
+      );
+      const rows = data?.data;
+      if (Array.isArray(rows)) {
+        const byCap = Object.fromEntries(rows.map((r) => [r.id, r]));
+        for (const coin of missing) {
+          const capId = GECKO_TO_COINCAP[coin.geckoId];
+          const row = capId && byCap[capId];
+          if (!row) continue;
+          const usd = Number(row.priceUsd);
+          if (!Number.isFinite(usd) || usd <= 0) continue;
+          applyLiveQuote(next, coin.id, {
+            usd,
+            change24h: Number(row.changePercent24Hr) || 0,
+          });
+        }
+      }
+    } catch {
+      /* per-coin next */
     }
-  } catch {
-    /* keep last quotes */
+  }
+
+  missing = cryptoStillNeeded(cryptos);
+  for (const coin of missing) {
+    try {
+      const q = await fetchCryptoQuote(coin);
+      if (q) applyLiveQuote(next, coin.id, q);
+    } catch {
+      /* keep last */
+    }
   }
 }
 
@@ -2170,11 +2268,19 @@ function applyLiveQuote(next, id, q) {
   next[id] = q;
   prices[id] = q;
   freshQuoteIds.add(id);
-  rememberQuotes({ [id]: q });
+  try {
+    rememberQuotes({ [id]: q });
+  } catch {
+    /* still paint */
+  }
   quotingIds.delete(id);
   paintAvatarQuoteState(id);
-  if (nav.view === "home" || nav.view === "portfolio" || nav.view === "asset" || nav.view === "tv") {
-    render();
+  try {
+    if (nav.view === "home" || nav.view === "portfolio" || nav.view === "asset" || nav.view === "tv") {
+      render();
+    }
+  } catch (err) {
+    console.warn("quote redraw failed", err);
   }
   return true;
 }
