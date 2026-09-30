@@ -1997,6 +1997,7 @@ const COINBASE_PAIRS = {
   stellar: "XLM-USD",
   "hedera-hashgraph": "HBAR-USD",
   cardano: "ADA-USD",
+  "midnight-3": "NIGHT-USD",
   dogecoin: "DOGE-USD",
   litecoin: "LTC-USD",
 };
@@ -2007,6 +2008,7 @@ const BINANCE_PAIRS = {
   stellar: "XLMUSDT",
   "hedera-hashgraph": "HBARUSDT",
   cardano: "ADAUSDT",
+  "midnight-3": "NIGHTUSDT",
   dogecoin: "DOGEUSDT",
   litecoin: "LTCUSDT",
 };
@@ -2057,16 +2059,89 @@ async function fetchCoinbaseSpot(asset) {
   }
 }
 
+function quoteFromCexTicker(data, lastKeys, changeKeys) {
+  if (!data || typeof data !== "object") return null;
+  let usd = NaN;
+  for (const k of lastKeys) {
+    usd = Number(data[k]);
+    if (Number.isFinite(usd) && usd > 0) break;
+  }
+  if (!Number.isFinite(usd) || usd <= 0) return null;
+  let change24h = 0;
+  for (const k of changeKeys) {
+    const n = Number(data[k]);
+    if (Number.isFinite(n)) {
+      change24h = n;
+      break;
+    }
+  }
+  return { usd, change24h };
+}
+
 async function fetchBinanceQuote(asset) {
-  const pair = BINANCE_PAIRS[asset?.geckoId];
+  const symbol = String(asset?.symbol || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+  const pair = BINANCE_PAIRS[asset?.geckoId] || (symbol ? `${symbol}USDT` : "");
   if (!pair) return null;
   const ticker = String(asset.symbol || pair).toUpperCase();
-  const url = `https://api.binance.com/api/v3/ticker/24hr?symbol=${encodeURIComponent(pair)}`;
+  const urls = [
+    `https://data-api.binance.vision/api/v3/ticker/24hr?symbol=${encodeURIComponent(pair)}`,
+    `https://api.binance.com/api/v3/ticker/24hr?symbol=${encodeURIComponent(pair)}`,
+  ];
+  for (const url of urls) {
+    try {
+      const data = await fetchJson(url, {}, 6000, ticker);
+      const q = quoteFromCexTicker(data, ["lastPrice", "weightedAvgPrice"], ["priceChangePercent"]);
+      if (q) return q;
+    } catch {
+      /* next host */
+    }
+  }
+  return null;
+}
+
+async function fetchMexcQuote(asset) {
+  const symbol = String(asset?.symbol || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+  if (!symbol) return null;
+  const pair = `${symbol}USDT`;
+  const ticker = String(asset.symbol || pair).toUpperCase();
+  const url = `https://api.mexc.com/api/v3/ticker/24hr?symbol=${encodeURIComponent(pair)}`;
   try {
     const data = await fetchJson(url, {}, 6000, ticker);
-    const usd = Number(data?.lastPrice || data?.weightedAvgPrice);
+    return quoteFromCexTicker(data, ["lastPrice"], ["priceChangePercent"]);
+  } catch {
+    return null;
+  }
+}
+
+async function fetchYahooCryptoQuote(asset) {
+  const symbol = String(asset?.symbol || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+  if (!symbol) return null;
+  try {
+    return await fetchYahooQuote(`${symbol}-USD`);
+  } catch {
+    return null;
+  }
+}
+
+async function fetchCryptoCompareQuote(asset) {
+  const symbol = String(asset?.symbol || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+  if (!symbol) return null;
+  const ticker = symbol;
+  const url = `https://min-api.cryptocompare.com/data/pricemultifull?fsyms=${encodeURIComponent(symbol)}&tsyms=USD`;
+  try {
+    const data = await fetchJson(url, {}, 6000, ticker);
+    const row = data?.RAW?.[symbol]?.USD;
+    const usd = Number(row?.PRICE);
     if (!Number.isFinite(usd) || usd <= 0) return null;
-    return { usd, change24h: Number(data.priceChangePercent) || 0 };
+    return { usd, change24h: Number(row.CHANGEPCT24HOUR) || 0 };
   } catch {
     return null;
   }
@@ -2077,7 +2152,7 @@ async function fetchCryptoQuote(asset) {
   const ticker = String(asset.symbol || asset.geckoId || "—").toUpperCase();
   const rows = await fetchGeckoMarkets([asset.geckoId], ticker);
   if (Array.isArray(rows) && rows.length) {
-    const row = rows.find((r) => r.id === asset.geckoId) || rows[0];
+    const row = rows.find((r) => r.id === asset.geckoId);
     const usd = Number(row?.current_price);
     if (Number.isFinite(usd) && usd > 0) {
       return {
@@ -2090,7 +2165,10 @@ async function fetchCryptoQuote(asset) {
     (await fetchGeckoSimpleQuote(asset)) ||
     (await fetchCoinCapQuote(asset)) ||
     (await fetchCoinbaseSpot(asset)) ||
-    (await fetchBinanceQuote(asset))
+    (await fetchBinanceQuote(asset)) ||
+    (await fetchMexcQuote(asset)) ||
+    (await fetchYahooCryptoQuote(asset)) ||
+    (await fetchCryptoCompareQuote(asset))
   );
 }
 
