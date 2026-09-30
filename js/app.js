@@ -781,6 +781,31 @@ function setFuturePrice(id, raw) {
   return store.futurePrices[id];
 }
 
+/** Restore Crystal Ball foresight so every relic uses its last quote. */
+function clearCrystalPrices() {
+  const n = Object.keys(store.futurePrices || {}).length;
+  store.futurePrices = {};
+  saveStore();
+  return n;
+}
+
+/**
+ * Temporary hoard price. Next live quote overwrites prices + lastQuotes.
+ * Does not append chart history.
+ */
+function setManualQuote(id, raw) {
+  if (!id || id === "cash") return null;
+  const cleaned = String(raw ?? "").replace(/,/g, "").trim();
+  const n = Number(cleaned);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const usd = roundPriceInput(n);
+  const prev = getQuote(id);
+  const q = { usd, change24h: Number(prev?.change24h) || 0 };
+  prices[id] = q;
+  rememberQuotes({ [id]: q });
+  return q;
+}
+
 function setAssetRisk(id, raw) {
   if (!id) return null;
   if (!store.assetRisk || typeof store.assetRisk !== "object") store.assetRisk = {};
@@ -2186,6 +2211,7 @@ async function refreshAssetQuote(id) {
       prices[id] = q;
       freshQuoteIds.add(id);
       rememberQuotes({ [id]: q });
+      dismissManualPriceEdit(id);
       saveMarketSnapshot();
       return q;
     }
@@ -2353,6 +2379,7 @@ function applyLiveQuote(next, id, q) {
   }
   quotingIds.delete(id);
   paintAvatarQuoteState(id);
+  dismissManualPriceEdit(id);
   try {
     if (nav.view === "home" || nav.view === "portfolio" || nav.view === "asset" || nav.view === "tv") {
       render();
@@ -3359,7 +3386,11 @@ function renderHome() {
         </div>
       </div>
       <div class="holding-mid">
-        <div class="holding-price">${px != null ? formatUsd(px) : "—"}</div>
+        ${
+          coin.id === "cash"
+            ? `<div class="holding-price">${px != null ? formatUsd(px) : "—"}</div>`
+            : `<button type="button" class="holding-price holding-price-edit" data-edit-quote="${escapeHtml(coin.id)}" aria-label="Edit ${escapeHtml(coin.symbol)} price">${px != null ? formatUsd(px) : "—"}</button>`
+        }
         <div class="holding-pct ${pct.cls}">${pct.text}</div>
       </div>
       <div class="holding-right">
@@ -4315,28 +4346,41 @@ function renderRisk() {
   }
 }
 
-let futureModalCoinId = null;
+let priceModalCoinId = null;
+let priceModalMode = "future";
 
 function openFuturePriceModal(coinId) {
+  openPriceModal(coinId, "future");
+}
+
+function openPriceModal(coinId, mode) {
   const coin = getAsset(coinId);
   const modal = document.getElementById("modal-future-price");
   const input = document.getElementById("future-price-modal-input");
   const head = document.getElementById("modal-future-head");
   const hint = document.getElementById("modal-future-hint");
   const title = document.getElementById("modal-future-title");
+  const label = document.getElementById("modal-price-label");
   if (!coin || !modal || !input) return;
+  if (mode === "quote" && coin.id === "cash") return;
 
-  futureModalCoinId = coin.id;
+  priceModalCoinId = coin.id;
+  priceModalMode = mode === "quote" ? "quote" : "future";
   const live = getQuote(coin.id)?.usd;
-  const saved = store.futurePrices?.[coin.id];
+  const savedFuture = store.futurePrices?.[coin.id];
   const shown =
-    Number.isFinite(saved) && saved > 0
-      ? saved
+    priceModalMode === "future"
+      ? Number.isFinite(savedFuture) && savedFuture > 0
+        ? savedFuture
+        : live != null && live > 0
+          ? live
+          : null
       : live != null && live > 0
         ? live
         : null;
 
-  if (title) title.textContent = `${coin.symbol} future`;
+  if (title) title.textContent = priceModalMode === "quote" ? `${coin.symbol} price` : `${coin.symbol} future`;
+  if (label) label.textContent = priceModalMode === "quote" ? "Price (USD)" : "Future price (USD)";
   if (head) {
     head.innerHTML = `
       <div class="modal-future-asset">
@@ -4352,9 +4396,11 @@ function openFuturePriceModal(coinId) {
   }
   if (hint) {
     hint.textContent =
-      live != null
-        ? `Live quote ${formatUsd(live)}. Clear the field and save to use live.`
-        : "Clear the field and save to use the live quote when available.";
+      priceModalMode === "quote"
+        ? "A live quote will replace this price."
+        : live != null
+          ? `Live quote ${formatUsd(live)}. Clear the field and save to use live.`
+          : "Clear the field and save to use the live quote when available.";
   }
   input.value = shown != null ? String(roundPriceInput(shown)) : "";
   modal.hidden = false;
@@ -4362,18 +4408,43 @@ function openFuturePriceModal(coinId) {
   input.select?.();
 }
 
-function closeFuturePriceModal() {
+function closePriceModal() {
   const modal = document.getElementById("modal-future-price");
   if (modal) modal.hidden = true;
-  futureModalCoinId = null;
+  priceModalCoinId = null;
+  priceModalMode = "future";
 }
 
-function saveFuturePriceModal() {
-  const id = futureModalCoinId;
+function closeFuturePriceModal() {
+  closePriceModal();
+}
+
+function dismissManualPriceEdit(id) {
+  if (priceModalMode === "quote" && priceModalCoinId && (!id || priceModalCoinId === id)) {
+    closePriceModal();
+  }
+}
+
+function savePriceModal() {
+  const id = priceModalCoinId;
   const input = document.getElementById("future-price-modal-input");
   if (!id || !input) return;
   const raw = input.value;
   const cleaned = String(raw ?? "").replace(/,/g, "").trim();
+  const symbol = getAsset(id)?.symbol || "";
+
+  if (priceModalMode === "quote") {
+    const q = setManualQuote(id, raw);
+    if (!q) {
+      toast("Enter a valid price", "error");
+      return;
+    }
+    closePriceModal();
+    render();
+    toast(`${symbol} · ${formatUsd(q.usd)}`, "success");
+    return;
+  }
+
   if (cleaned) {
     const n = Number(cleaned);
     if (!Number.isFinite(n) || n <= 0) {
@@ -4382,9 +4453,13 @@ function saveFuturePriceModal() {
     }
   }
   const saved = setFuturePrice(id, raw);
-  closeFuturePriceModal();
+  closePriceModal();
   renderHome();
-  toast(saved != null ? `Future ${getAsset(id)?.symbol || ""} · ${formatUsd(saved)}` : "Using live quote", "success");
+  toast(saved != null ? `Future ${symbol} · ${formatUsd(saved)}` : "Using live quote", "success");
+}
+
+function saveFuturePriceModal() {
+  savePriceModal();
 }
 
 function renderPortfolio() {
@@ -6852,20 +6927,37 @@ function wire() {
     renderRisk();
   });
 
-  document.getElementById("modal-future-cancel")?.addEventListener("click", closeFuturePriceModal);
-  document.getElementById("modal-future-save")?.addEventListener("click", saveFuturePriceModal);
+  document.getElementById("home-holdings-list")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-edit-quote]");
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const id = btn.getAttribute("data-edit-quote");
+    if (id) openPriceModal(id, "quote");
+  });
+
+  document.getElementById("modal-future-cancel")?.addEventListener("click", closePriceModal);
+  document.getElementById("modal-future-save")?.addEventListener("click", savePriceModal);
   document.getElementById("modal-future-price")?.addEventListener("click", (e) => {
-    if (e.target?.id === "modal-future-price") closeFuturePriceModal();
+    if (e.target?.id === "modal-future-price") closePriceModal();
   });
   document.getElementById("future-price-modal-input")?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      saveFuturePriceModal();
+      savePriceModal();
     } else if (e.key === "Escape") {
       e.preventDefault();
-      closeFuturePriceModal();
+      closePriceModal();
     }
   });
+
+  const clearCrystal = () => {
+    const n = clearCrystalPrices();
+    renderHome();
+    toast(n ? "Crystal prices restored to last quotes" : "Crystal prices already match last quotes", "success");
+  };
+  document.getElementById("btn-clear-crystal")?.addEventListener("click", clearCrystal);
+  document.getElementById("btn-clear-crystal-prices")?.addEventListener("click", clearCrystal);
 
   document.getElementById("btn-new-portfolio").addEventListener("click", () => openPortfolioModal("create"));
   document.getElementById("btn-rename-portfolio").addEventListener("click", () => openPortfolioModal("rename"));

@@ -1955,6 +1955,31 @@ button.holding-row:active {
   font-variant-numeric: tabular-nums;
 }
 
+button.holding-price-edit {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  margin: 0 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+  text-decoration-color: rgba(212, 175, 55, 0.45);
+}
+
+button.holding-price-edit:active {
+  opacity: 0.75;
+}
+
 .holding-pct {
   font-size: 0.75rem;
   font-weight: 600;

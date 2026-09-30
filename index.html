@@ -733,6 +733,7 @@
       <section class="view" id="view-settings" data-view="settings">
         <nav class="codex-menu" aria-label="Codex">
           <button type="button" class="codex-menu-btn" id="btn-risk">Risk</button>
+          <button type="button" class="codex-menu-btn" id="btn-clear-crystal">Clear crystal</button>
         </nav>
         <div class="settings-group">
           <h2>Lightning Power</h2>
@@ -772,6 +773,14 @@
           </div>
           <button type="button" class="btn-secondary full" id="btn-clear-damage" style="margin-top: 14px">
             Clear damage
+          </button>
+        </div>
+
+        <div class="settings-group">
+          <h2>Crystal Ball</h2>
+          <p class="page-desc">Future prices you set on the Crystal Ball page. Clearing restores every relic to its last quoted price.</p>
+          <button type="button" class="btn-secondary full" id="btn-clear-crystal-prices">
+            Clear crystal prices
           </button>
         </div>
 
@@ -838,7 +847,7 @@
     <div class="modal sheet" role="dialog" aria-modal="true" aria-labelledby="modal-future-title">
       <h2 id="modal-future-title">Future price</h2>
       <div class="modal-future-head" id="modal-future-head"></div>
-      <label class="field-label" for="future-price-modal-input">Future price (USD)</label>
+      <label class="field-label" for="future-price-modal-input" id="modal-price-label">Future price (USD)</label>
       <input
         id="future-price-modal-input"
         class="field-input"
