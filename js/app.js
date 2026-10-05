@@ -229,6 +229,22 @@ const COINS = [
     fetchBalance: null,
   },
   {
+    id: "copper",
+    name: "Copper",
+    symbol: "XCU",
+    kind: "metal",
+    unit: "oz",
+    yahooSymbol: "HG=F",
+    priceDivisor: 16,
+    tvSymbol: "XCUUSD",
+    decimals: 4,
+    color: "#b87333",
+    placeholder: "",
+    note: "Spot copper priced per ounce. Add ounces you hold.",
+    explorer: null,
+    fetchBalance: null,
+  },
+  {
     id: "cash",
     name: "Cash",
     symbol: "USD",
@@ -359,8 +375,10 @@ function findExistingAsset(result) {
   const hint = `${result.symbol || ""} ${result.yahooSymbol || ""} ${result.name || ""}`.toUpperCase();
   if (!result.geckoId && /\b(XAU|XAUUSD|GC=F)\b/.test(hint)) return getAsset("gold");
   if (!result.geckoId && /\b(XAG|XAGUSD|SI=F)\b/.test(hint)) return getAsset("silver");
+  if (!result.geckoId && /\b(XCU|XCUUSD|HG=F)\b/.test(hint)) return getAsset("copper");
   if (result.kind === "metal" && /GOLD|XAU/.test(hint)) return getAsset("gold");
   if (result.kind === "metal" && /SILVER|XAG/.test(hint)) return getAsset("silver");
+  if (result.kind === "metal" && /COPPER|XCU/.test(hint)) return getAsset("copper");
   if (result.kind === "cash" || (!result.geckoId && /\b(CASH|USD|DOLLAR|DXY)\b/.test(hint))) return getAsset("cash");
   if (result.kind === "crypto" && result.geckoId) {
     return allAssets().find((a) => a.geckoId === result.geckoId) || null;
@@ -1249,7 +1267,7 @@ function formatUsd(n, digits) {
 
 function amountUnit(symbol) {
   const s = String(symbol || "").toUpperCase();
-  if (s === "OZ" || s === "XAU" || s === "XAG" || s === "GOLD" || s === "SILVER") return "oz";
+  if (s === "OZ" || s === "XAU" || s === "XAG" || s === "XCU" || s === "GOLD" || s === "SILVER" || s === "COPPER") return "oz";
   if (s === "USD" || s === "CASH") return "USD";
   const asset = getAsset(s.toLowerCase()) || allAssets().find((a) => a.symbol === symbol);
   if (asset?.unit) return asset.unit;
@@ -2279,6 +2297,16 @@ function quoteRefreshAssets() {
   );
 }
 
+/** COMEX copper is quoted per pound; the hoard stores ounces. */
+function scaleQuoteForAsset(asset, q) {
+  if (!q || !Number.isFinite(Number(q.usd))) return q;
+  const div = Number(asset?.priceDivisor);
+  if (!Number.isFinite(div) || div <= 0 || div === 1) return q;
+  const usd = Number(q.usd) / div;
+  if (!Number.isFinite(usd) || usd <= 0) return null;
+  return { usd, change24h: Number(q.change24h) || 0 };
+}
+
 /** Fetch one relic's live quote (crypto, stock, or metal). */
 async function fetchAssetQuote(asset) {
   if (!asset || asset.id === "cash" || asset.kind === "cash") return null;
@@ -2289,6 +2317,7 @@ async function fetchAssetQuote(asset) {
   if (!q && asset.geckoId) {
     q = await fetchCryptoQuote(asset);
   }
+  q = scaleQuoteForAsset(asset, q);
   return q && Number.isFinite(q.usd) ? q : null;
 }
 
@@ -2429,7 +2458,7 @@ async function fetchPrices() {
       quotingIds.add(asset.id);
       paintAvatarQuoteState(asset.id);
       try {
-        const q = await fetchStockQuote(asset.yahooSymbol);
+        const q = await fetchAssetQuote(asset);
         if (q) applyLiveQuote(next, asset.id, q);
       } catch {
         /* keep last quote */
@@ -4786,7 +4815,7 @@ function renderAddCoin() {
   if (!list) return;
   list.innerHTML = "";
   const assets = allAssets();
-  const pinOrder = ["gold", "silver", "cash"];
+  const pinOrder = ["gold", "silver", "copper", "cash"];
   const pinned = pinOrder.map((id) => assets.find((c) => c.id === id)).filter(Boolean);
   const rest = assets.filter((c) => !pinOrder.includes(c.id));
   for (const coin of [...pinned, ...rest]) {
@@ -4871,7 +4900,7 @@ function renderSearchResults(results, query) {
       const asset = getAsset(id);
       if (asset?.yahooSymbol && (asset.kind === "stock" || asset.kind === "metal")) {
         try {
-          const q = await fetchStockQuote(asset.yahooSymbol);
+          const q = await fetchAssetQuote(asset);
           if (q) {
             prices[id] = q;
             freshQuoteIds.add(id);
@@ -4909,14 +4938,15 @@ async function runAssetSearch(query) {
   const token = ++assetSearchToken;
   try {
     const q = query.toLowerCase();
+    const ozQ = q === "oz" || q.startsWith("ounce");
     const metals = allAssets()
       .filter((a) => a.kind === "metal" || a.kind === "cash")
       .filter(
         (a) =>
           a.name.toLowerCase().includes(q) ||
           a.symbol.toLowerCase().includes(q) ||
-          q === "oz" ||
-          q.startsWith("ounce") ||
+          String(a.yahooSymbol || "").toLowerCase().includes(q) ||
+          ozQ ||
           q === "cash" ||
           q === "usd" ||
           q.startsWith("dollar")
@@ -4927,6 +4957,7 @@ async function runAssetSearch(query) {
         symbol: a.symbol,
         yahooSymbol: a.yahooSymbol,
         existingId: a.id,
+        unit: a.unit,
       }));
     const [crypto, stocks] = await Promise.all([
       searchCrypto(query).catch(() => []),
