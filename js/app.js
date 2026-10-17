@@ -4144,36 +4144,78 @@ function renderHomePl() {
   }
 }
 
+function isCashAsset(coin) {
+  return !!(coin && (coin.id === "cash" || coin.kind === "cash"));
+}
+
+function crystalTradePrice(coin) {
+  const live = getQuote(coin?.id)?.usd ?? 0;
+  const fut = getFuturePrice(coin?.id);
+  return fut != null && fut > 0 ? fut : live;
+}
+
+/** Cash in/out from Crystal Ball share steps, at each relic's vision price. */
+function crystalCashDeltaUsd(allocRows) {
+  let delta = 0;
+  for (const r of allocRows || []) {
+    const coin = getAsset(r.coinId);
+    if (!coin || isCashAsset(coin)) continue;
+    const liveQty = Number(r.balance) || 0;
+    const visionQty = getFutureQty(coin.id, liveQty);
+    const dQty = liveQty - visionQty;
+    if (Math.abs(dQty) < 1e-12) continue;
+    delta += qtyToUsd(coin, dQty, crystalTradePrice(coin));
+  }
+  return delta;
+}
+
+function pushCrystalRow(rows, coin, liveQty, visionQty, livePx, futurePx) {
+  const futureUsd = qtyToUsd(coin, visionQty, futurePx);
+  const liveUsd = qtyToUsd(coin, liveQty, livePx);
+  rows.push({
+    coinId: coin.id,
+    balance: visionQty,
+    liveBalance: liveQty,
+    livePrice: livePx,
+    futurePrice: futurePx,
+    futureUsd,
+    liveUsd,
+    qtyStepped: Math.abs(visionQty - liveQty) > 1e-9,
+    changePct: liveUsd > 0 ? ((futureUsd - liveUsd) / liveUsd) * 100 : liveUsd === 0 && futureUsd !== 0 ? 100 : null,
+    alloc: 0,
+  });
+  return { futureUsd, liveUsd };
+}
+
 function crystalBallTotals() {
   const { allocRows } = allPortfoliosTotals();
+  const cashDelta = crystalCashDeltaUsd(allocRows);
   let totalFuture = 0;
   let totalLive = 0;
   const rows = [];
+  let sawCash = false;
   for (const r of allocRows || []) {
-    if (!(r.balance > 0 || r.usd > 0)) continue;
     const coin = getAsset(r.coinId);
     if (!coin) continue;
-    const live = getQuote(coin.id)?.usd ?? 0;
-    const fut = getFuturePrice(coin.id);
-    const futurePrice = fut != null && fut > 0 ? fut : live;
+    const isCash = isCashAsset(coin);
+    if (!(r.balance > 0 || r.usd > 0 || (isCash && Math.abs(cashDelta) > 1e-9))) continue;
+    const live = isCash ? 1 : getQuote(coin.id)?.usd ?? 0;
+    const futurePrice = isCash ? 1 : crystalTradePrice(coin);
     const liveQty = r.balance;
-    const visionQty = getFutureQty(coin.id, liveQty);
-    const futureUsd = qtyToUsd(coin, visionQty, futurePrice);
-    const liveUsd = qtyToUsd(coin, liveQty, live);
+    const visionQty = isCash ? liveQty + cashDelta : getFutureQty(coin.id, liveQty);
+    if (isCash) sawCash = true;
+    const { futureUsd, liveUsd } = pushCrystalRow(rows, coin, liveQty, visionQty, live, futurePrice);
     totalFuture += futureUsd;
     totalLive += liveUsd;
-    rows.push({
-      coinId: coin.id,
-      balance: visionQty,
-      liveBalance: liveQty,
-      livePrice: live,
-      futurePrice,
-      futureUsd,
-      liveUsd,
-      qtyStepped: Math.abs(visionQty - liveQty) > 1e-9,
-      changePct: liveUsd > 0 ? ((futureUsd - liveUsd) / liveUsd) * 100 : null,
-      alloc: 0,
-    });
+  }
+  if (!sawCash && Math.abs(cashDelta) > 1e-9) {
+    const coin = getAsset("cash");
+    if (coin) {
+      const liveQty = heldBalanceForAsset("cash");
+      const { futureUsd, liveUsd } = pushCrystalRow(rows, coin, liveQty, liveQty + cashDelta, 1, 1);
+      totalFuture += futureUsd;
+      totalLive += liveUsd;
+    }
   }
   for (const r of rows) {
     r.alloc = totalFuture > 0 ? (r.futureUsd / totalFuture) * 100 : 0;
@@ -4232,7 +4274,9 @@ function renderCrystalBall() {
           <button type="button" class="crystal-qty-val" data-crystal-qty-reset="${escapeHtml(coin.id)}" ${r.qtyStepped ? "" : "disabled"} aria-label="Reset ${escapeHtml(coin.symbol)} to live shares">${escapeHtml(qtyLabel)}</button>
           <button type="button" class="crystal-qty-btn" data-crystal-qty="${escapeHtml(coin.id)}" data-dir="1" aria-label="More ${escapeHtml(coin.symbol)} shares">+</button>
         </div>`
-      : `<div class="holding-amount">${r.balance > 0 ? formatAmt(r.balance, coin.symbol) : "—"}</div>`;
+      : `<div class="holding-amount${r.qtyStepped ? " is-vision" : ""}">${
+          Number.isFinite(r.balance) ? formatAmt(r.balance, coin.symbol) : "—"
+        }</div>`;
     const row = document.createElement("div");
     row.className = "holding-row";
     row.setAttribute("role", "row");

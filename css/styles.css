@@ -2693,7 +2693,8 @@ button.holding-price-edit:active {
   font-variant-numeric: tabular-nums;
 }
 
-.crystal-qty.is-vision .crystal-qty-val {
+.crystal-qty.is-vision .crystal-qty-val,
+.holding-amount.is-vision {
   color: var(--accent);
 }
 
