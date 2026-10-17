@@ -2672,6 +2672,50 @@ button.holding-price-edit:active {
   font: inherit;
 }
 
+.crystal-qty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.crystal-qty-val {
+  min-width: 2.2rem;
+  margin: 0;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.crystal-qty.is-vision .crystal-qty-val {
+  color: var(--accent);
+}
+
+.crystal-qty-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: rgba(212, 175, 55, 0.1);
+  color: var(--accent);
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.crystal-qty-btn:active {
+  transform: scale(0.96);
+  opacity: 0.85;
+}
+
 .picker-list {
   display: flex;
   flex-direction: column;

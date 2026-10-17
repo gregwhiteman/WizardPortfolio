@@ -235,12 +235,13 @@ const COINS = [
     kind: "metal",
     unit: "oz",
     yahooSymbol: "HG=F",
-    priceDivisor: 16,
-    tvSymbol: "XCUUSD",
+    quoteUnit: "lb",
+    qtyPerQuote: 16,
+    tvSymbol: "COMEX:HG1!",
     decimals: 4,
     color: "#b87333",
     placeholder: "",
-    note: "Spot copper priced per ounce. Add ounces you hold.",
+    note: "COMEX copper (HG) priced per pound. Add ounces you hold (16 oz = 1 lb).",
     explorer: null,
     fetchBalance: null,
   },
@@ -776,6 +777,68 @@ function normalizeFuturePrices(raw) {
   return out;
 }
 
+function normalizeFutureQty(raw) {
+  const out = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [id, val] of Object.entries(raw)) {
+    const n = Number(val);
+    if (!id || !Number.isFinite(n) || n < 0) continue;
+    out[id] = Math.floor(n);
+  }
+  return out;
+}
+
+/** Next owned count whose digits reduce to 8, same rule as Buy/Sell share offsets. */
+function nextDigitRoot8Qty(current, dir) {
+  const step = dir < 0 ? -1 : 1;
+  let n = Math.floor(Number(current) || 0) + step;
+  const guard = 12;
+  for (let i = 0; i < guard; i++, n += step) {
+    if (n <= 0) return 0;
+    if (reduceToSingleDigit(n) === 8) return n;
+  }
+  return Math.max(0, Math.floor(Number(current) || 0));
+}
+
+function getFutureQty(id, liveBalance) {
+  const saved = store.futureQty?.[id];
+  if (saved != null && Number.isFinite(Number(saved)) && Number(saved) >= 0) return Number(saved);
+  return Number(liveBalance) || 0;
+}
+
+function setFutureQty(id, qty) {
+  if (!id) return null;
+  if (!store.futureQty || typeof store.futureQty !== "object") store.futureQty = {};
+  if (qty == null) {
+    delete store.futureQty[id];
+    saveStore();
+    return null;
+  }
+  const n = Math.floor(Number(qty));
+  if (!Number.isFinite(n) || n < 0) return getFutureQty(id, 0);
+  store.futureQty[id] = n;
+  saveStore();
+  return n;
+}
+
+function canStepCrystalQty(coin, liveBalance) {
+  if (!coin || coin.id === "cash" || coin.kind === "cash") return false;
+  if (coin.kind === "stock") return true;
+  return Number(liveBalance) >= 1;
+}
+
+function stepCrystalQty(id, dir) {
+  const coin = getAsset(id);
+  if (!coin) return;
+  const live = heldBalanceForAsset(id);
+  if (!canStepCrystalQty(coin, live)) return;
+  const cur = getFutureQty(id, live);
+  const next = nextDigitRoot8Qty(cur, dir);
+  if (Math.abs(next - live) < 1e-9) setFutureQty(id, null);
+  else setFutureQty(id, next);
+  renderHome();
+}
+
 /** Saved foresight price, else live quote. */
 function getFuturePrice(id) {
   const saved = store.futurePrices?.[id];
@@ -799,10 +862,12 @@ function setFuturePrice(id, raw) {
   return store.futurePrices[id];
 }
 
-/** Restore Crystal Ball foresight so every relic uses its last quote. */
+/** Restore Crystal Ball foresight so every relic uses its last quote and live quantity. */
 function clearCrystalPrices() {
-  const n = Object.keys(store.futurePrices || {}).length;
+  const n =
+    Object.keys(store.futurePrices || {}).length + Object.keys(store.futureQty || {}).length;
   store.futurePrices = {};
+  store.futureQty = {};
   saveStore();
   return n;
 }
@@ -881,6 +946,7 @@ function defaultStore() {
     priceHistory: {},
     assetRisk: {},
     futurePrices: {},
+    futureQty: {},
     elementDamage: {},
     portfolios: [
       {
@@ -905,6 +971,7 @@ function normalizeLoadedStore(parsed) {
   parsed.priceHistory = normalizePriceHistory(parsed.priceHistory);
   parsed.assetRisk = normalizeAssetRiskMap(parsed.assetRisk);
   parsed.futurePrices = normalizeFuturePrices(parsed.futurePrices);
+  parsed.futureQty = normalizeFutureQty(parsed.futureQty);
   parsed.elementDamage = normalizeElementDamage(parsed.elementDamage);
   return parsed;
 }
@@ -1108,6 +1175,7 @@ function loadStore() {
         priceHistory: {},
         assetRisk: {},
         futurePrices: {},
+        futureQty: {},
         elementDamage: {},
         version: 2,
         activePortfolioId: id,
@@ -1185,6 +1253,7 @@ function storeRichness(s) {
   }
   score += Array.isArray(s.customAssets) ? s.customAssets.length * 4 : 0;
   score += s.futurePrices ? Object.keys(s.futurePrices).length : 0;
+  score += s.futureQty ? Object.keys(s.futureQty).length : 0;
   score += s.assetRisk ? Object.keys(s.assetRisk).length : 0;
   score += s.lastQuotes ? Math.min(20, Object.keys(s.lastQuotes).length) : 0;
   return score;
@@ -1618,6 +1687,35 @@ async function fetchJsonSequential(urls, timeoutMs = 6000, ticker = "—") {
     }
   }
   throw lastErr || new Error("Network error");
+}
+
+/** How many holding units (oz) equal one quoted unit (lb for COMEX copper). */
+function assetQtyPerQuote(asset) {
+  const n = Number(asset?.qtyPerQuote);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+/** Market value of a quantity at a live/future quote. */
+function qtyToUsd(assetOrId, qty, quoteUsd) {
+  const asset = typeof assetOrId === "string" ? getAsset(assetOrId) : assetOrId;
+  const q = Number(qty);
+  const px = Number(quoteUsd);
+  if (!Number.isFinite(q) || !Number.isFinite(px)) return 0;
+  return (q * px) / assetQtyPerQuote(asset);
+}
+
+/** Price per holding unit (per oz) from a COMEX/Yahoo quote. */
+function unitUsdFromQuote(asset, quoteUsd) {
+  const px = Number(quoteUsd);
+  if (!Number.isFinite(px) || px <= 0) return null;
+  const n = px / assetQtyPerQuote(asset);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function formatAssetPrice(asset, quoteUsd) {
+  if (quoteUsd == null || !Number.isFinite(Number(quoteUsd))) return "—";
+  const u = asset?.quoteUnit ? `/${asset.quoteUnit}` : "";
+  return `${formatUsd(quoteUsd)}${u}`;
 }
 
 /** Live quote, else last shown/saved price so the hoard never blanks. */
@@ -2297,16 +2395,6 @@ function quoteRefreshAssets() {
   );
 }
 
-/** COMEX copper is quoted per pound; the hoard stores ounces. */
-function scaleQuoteForAsset(asset, q) {
-  if (!q || !Number.isFinite(Number(q.usd))) return q;
-  const div = Number(asset?.priceDivisor);
-  if (!Number.isFinite(div) || div <= 0 || div === 1) return q;
-  const usd = Number(q.usd) / div;
-  if (!Number.isFinite(usd) || usd <= 0) return null;
-  return { usd, change24h: Number(q.change24h) || 0 };
-}
-
 /** Fetch one relic's live quote (crypto, stock, or metal). */
 async function fetchAssetQuote(asset) {
   if (!asset || asset.id === "cash" || asset.kind === "cash") return null;
@@ -2317,7 +2405,6 @@ async function fetchAssetQuote(asset) {
   if (!q && asset.geckoId) {
     q = await fetchCryptoQuote(asset);
   }
-  q = scaleQuoteForAsset(asset, q);
   return q && Number.isFinite(q.usd) ? q : null;
 }
 
@@ -2565,7 +2652,7 @@ function buildPortfolioSeries(holdings) {
         anyMissing = true;
         continue;
       }
-      v += h.balance * px;
+      v += qtyToUsd(h.coinId, h.balance, px);
       ok = true;
     }
     if (ok && v > 0) out.push({ t, v });
@@ -2863,7 +2950,7 @@ function costBasisInfo(pf, coinId) {
   const cost = Number(holding.costBasisUsd) || 0;
   const avg = balance > 0 && cost > 0 ? cost / balance : null;
   const px = getQuote(coinId)?.usd ?? 0;
-  const market = balance * px;
+  const market = qtyToUsd(coinId, balance, px);
   const pl = cost > 0 ? market - cost : null;
   const plPct = cost > 0 && Number.isFinite(pl) ? (pl / cost) * 100 : null;
   return { cost, avg, market, pl, plPct, balance };
@@ -2923,7 +3010,7 @@ function portfolioTotals(pf) {
     assets += 1;
     const px = getQuote(coin.id)?.usd ?? 0;
     const ch = getQuote(coin.id)?.change24h ?? 0;
-    const usd = (info.hasData ? info.balance : 0) * px;
+    const usd = qtyToUsd(coin, info.hasData ? info.balance : 0, px);
     totalUsd += usd;
     const prev = ch === -100 ? 0 : usd / (1 + ch / 100);
     totalPrev += Number.isFinite(prev) ? prev : usd;
@@ -3418,7 +3505,7 @@ function renderHome() {
         ${
           coin.id === "cash"
             ? `<div class="holding-price">${px != null ? formatUsd(px) : "—"}</div>`
-            : `<button type="button" class="holding-price holding-price-edit" data-edit-quote="${escapeHtml(coin.id)}" aria-label="Edit ${escapeHtml(coin.symbol)} price">${px != null ? formatUsd(px) : "—"}</button>`
+            : `<button type="button" class="holding-price holding-price-edit" data-edit-quote="${escapeHtml(coin.id)}" aria-label="Edit ${escapeHtml(coin.symbol)} price">${px != null ? formatAssetPrice(coin, px) : "—"}</button>`
         }
         <div class="holding-pct ${pct.cls}">${pct.text}</div>
       </div>
@@ -3573,8 +3660,9 @@ function applyTickerDefaults(side) {
   if (!asset) return;
 
   const px = getQuote(asset.id)?.usd;
-  if (px != null && px > 0 && document.activeElement !== priceEl) {
-    priceEl.value = String(roundPriceInput(px));
+  const unitPx = unitUsdFromQuote(asset, px) ?? px;
+  if (unitPx != null && unitPx > 0 && document.activeElement !== priceEl) {
+    priceEl.value = String(roundPriceInput(unitPx));
   }
   if (document.activeElement !== ownedEl) {
     const bal = heldBalanceForAsset(asset.id);
@@ -3962,7 +4050,7 @@ function renderWizardHoldings(bodyId, allocRows, plRows, { future = false } = {}
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td class="ticker">${escapeHtml(coin.symbol)}</td>
-      <td class="${priceCls}">${px != null ? formatUsd(px) : "—"}</td>
+      <td class="${priceCls}">${px != null ? formatAssetPrice(coin, px) : "—"}</td>
       <td class="${allocCls}">${alloc}</td>
       <td class="${riskCls}">${risk != null ? String(risk) : "—"}</td>
       <td class="${day.cls}">${day.text}</td>
@@ -4068,18 +4156,22 @@ function crystalBallTotals() {
     const live = getQuote(coin.id)?.usd ?? 0;
     const fut = getFuturePrice(coin.id);
     const futurePrice = fut != null && fut > 0 ? fut : live;
-    const futureUsd = r.balance * futurePrice;
-    const liveUsd = r.balance * live;
+    const liveQty = r.balance;
+    const visionQty = getFutureQty(coin.id, liveQty);
+    const futureUsd = qtyToUsd(coin, visionQty, futurePrice);
+    const liveUsd = qtyToUsd(coin, liveQty, live);
     totalFuture += futureUsd;
     totalLive += liveUsd;
     rows.push({
       coinId: coin.id,
-      balance: r.balance,
+      balance: visionQty,
+      liveBalance: liveQty,
       livePrice: live,
       futurePrice,
       futureUsd,
       liveUsd,
-      changePct: live > 0 ? ((futurePrice - live) / live) * 100 : null,
+      qtyStepped: Math.abs(visionQty - liveQty) > 1e-9,
+      changePct: liveUsd > 0 ? ((futureUsd - liveUsd) / liveUsd) * 100 : null,
       alloc: 0,
     });
   }
@@ -4130,32 +4222,39 @@ function renderCrystalBall() {
     const coin = getAsset(r.coinId);
     if (!coin) continue;
     const pct = formatPct(r.changePct);
-    const row = document.createElement("button");
-    row.type = "button";
-    row.className = "holding-row holding-row-btn";
-    row.setAttribute("aria-label", `Edit future price for ${coin.symbol}`);
-    row.dataset.futureEdit = coin.id;
+    const steppable = canStepCrystalQty(coin, r.liveBalance);
+    const qtyLabel = Number.isInteger(r.balance) || Math.abs(r.balance - Math.round(r.balance)) < 1e-9
+      ? String(Math.round(r.balance))
+      : formatAmt(r.balance, coin.symbol).replace(/\s+\S+$/, "");
+    const qtyBlock = steppable
+      ? `<div class="crystal-qty${r.qtyStepped ? " is-vision" : ""}">
+          <button type="button" class="crystal-qty-btn" data-crystal-qty="${escapeHtml(coin.id)}" data-dir="-1" aria-label="Fewer ${escapeHtml(coin.symbol)} shares">−</button>
+          <button type="button" class="crystal-qty-val" data-crystal-qty-reset="${escapeHtml(coin.id)}" ${r.qtyStepped ? "" : "disabled"} aria-label="Reset ${escapeHtml(coin.symbol)} to live shares">${escapeHtml(qtyLabel)}</button>
+          <button type="button" class="crystal-qty-btn" data-crystal-qty="${escapeHtml(coin.id)}" data-dir="1" aria-label="More ${escapeHtml(coin.symbol)} shares">+</button>
+        </div>`
+      : `<div class="holding-amount">${r.balance > 0 ? formatAmt(r.balance, coin.symbol) : "—"}</div>`;
+    const row = document.createElement("div");
+    row.className = "holding-row";
+    row.setAttribute("role", "row");
     row.innerHTML = `
       <div class="holding-left">
         ${coinAvatarHtml(coin)}
         <div>
           <div class="holding-name">${escapeHtml(displayName(coin))}</div>
-          <div class="holding-symbol">${coin.symbol}${r.balance > 0 ? ` · ${formatAmt(r.balance, coin.symbol)}` : ""}</div>
+          <div class="holding-symbol">${escapeHtml(coin.symbol)}${
+            r.qtyStepped ? ` · have ${formatAmt(r.liveBalance, coin.symbol)}` : ""
+          }</div>
         </div>
       </div>
       <div class="holding-mid">
-        <div class="holding-price">${r.futurePrice != null ? formatUsd(r.futurePrice) : "—"}</div>
+        <button type="button" class="holding-price holding-price-edit" data-future-edit="${escapeHtml(coin.id)}" aria-label="Edit future price for ${escapeHtml(coin.symbol)}">${r.futurePrice != null ? formatAssetPrice(coin, r.futurePrice) : "—"}</button>
         <div class="holding-pct ${pct.cls}">${pct.text}</div>
       </div>
       <div class="holding-right">
         <div class="holding-value">${formatUsd(r.futureUsd)}</div>
-        <div class="holding-amount">${r.livePrice != null ? `now ${formatUsd(r.livePrice)}` : "—"}</div>
+        ${qtyBlock}
       </div>
     `;
-    row.addEventListener("click", (e) => {
-      if (e.target.closest("[data-open-tv]")) return;
-      openFuturePriceModal(coin.id);
-    });
     list.appendChild(row);
   }
 }
@@ -4409,7 +4508,10 @@ function openPriceModal(coinId, mode) {
         : null;
 
   if (title) title.textContent = priceModalMode === "quote" ? `${coin.symbol} price` : `${coin.symbol} future`;
-  if (label) label.textContent = priceModalMode === "quote" ? "Price (USD)" : "Future price (USD)";
+  if (label) {
+    const unit = coin.quoteUnit ? ` (USD/${coin.quoteUnit})` : " (USD)";
+    label.textContent = priceModalMode === "quote" ? `Price${unit}` : `Future price${unit}`;
+  }
   if (head) {
     head.innerHTML = `
       <div class="modal-future-asset">
@@ -4417,7 +4519,7 @@ function openPriceModal(coinId, mode) {
         <div>
           <div class="holding-name">${escapeHtml(displayName(coin))}</div>
           <div class="holding-symbol">${escapeHtml(coin.symbol)}${
-            live != null ? ` · now ${formatUsd(live)}` : ""
+            live != null ? ` · now ${formatAssetPrice(coin, live)}` : ""
           }</div>
         </div>
       </div>
@@ -4428,7 +4530,7 @@ function openPriceModal(coinId, mode) {
       priceModalMode === "quote"
         ? "A live quote will replace this price."
         : live != null
-          ? `Live quote ${formatUsd(live)}. Clear the field and save to use live.`
+          ? `Live quote ${formatAssetPrice(coin, live)}. Clear the field and save to use live.`
           : "Clear the field and save to use the live quote when available.";
   }
   input.value = shown != null ? String(roundPriceInput(shown)) : "";
@@ -4525,8 +4627,8 @@ function renderPortfolio() {
   const sorted = [...coinsTracked].sort((a, b) => {
     const ba = coinBalanceInPortfolio(pf, a.id);
     const bb = coinBalanceInPortfolio(pf, b.id);
-    const ua = (ba.hasData ? ba.balance : 0) * (getQuote(a.id)?.usd || 0);
-    const ub = (bb.hasData ? bb.balance : 0) * (getQuote(b.id)?.usd || 0);
+    const ua = qtyToUsd(a, ba.hasData ? ba.balance : 0, getQuote(a.id)?.usd || 0);
+    const ub = qtyToUsd(b, bb.hasData ? bb.balance : 0, getQuote(b.id)?.usd || 0);
     return ub - ua;
   });
 
@@ -4534,7 +4636,7 @@ function renderPortfolio() {
     const info = coinBalanceInPortfolio(pf, coin.id);
     const px = getQuote(coin.id)?.usd;
     const ch = getQuote(coin.id)?.change24h;
-    const usd = info.hasData ? info.balance * (px || 0) : null;
+    const usd = info.hasData ? qtyToUsd(coin, info.balance, px || 0) : null;
     const pct = formatPct(ch);
     const holding = getCoinHolding(pf, coin.id);
     const anyLoading = holding.addresses.some(
@@ -4567,7 +4669,7 @@ function renderPortfolio() {
         </div>
       </div>
       <div class="holding-mid">
-        <div class="holding-price">${px != null ? formatUsd(px) : "—"}</div>
+        <div class="holding-price">${px != null ? formatAssetPrice(coin, px) : "—"}</div>
         <div class="holding-pct ${pct.cls}">${pct.text}</div>
       </div>
       <div class="holding-right">
@@ -4596,10 +4698,10 @@ function renderAsset() {
   const ch = getQuote(coin.id)?.change24h;
   const pct = formatPct(ch);
   document.getElementById("asset-price-line").innerHTML =
-    `${px != null ? formatUsd(px) : "—"} · <span class="holding-pct ${pct.cls}">${pct.text}</span>`;
+    `${px != null ? formatAssetPrice(coin, px) : "—"} · <span class="holding-pct ${pct.cls}">${pct.text}</span>`;
 
   const info = coinBalanceInPortfolio(pf, coin.id);
-  const usd = info.hasData ? info.balance * (px || 0) : 0;
+  const usd = info.hasData ? qtyToUsd(coin, info.balance, px || 0) : 0;
   document.getElementById("asset-total").textContent = formatUsd(usd);
   document.getElementById("asset-amount").textContent = formatAmt(
     info.hasData ? info.balance : 0,
@@ -4608,8 +4710,8 @@ function renderAsset() {
 
   // Breakdown: on-chain + manual = total
   const bd = document.getElementById("asset-breakdown");
-  const onchainUsd = info.onchain * (px || 0);
-  const manualUsd = info.manual * (px || 0);
+  const onchainUsd = qtyToUsd(coin, info.onchain, px || 0);
+  const manualUsd = qtyToUsd(coin, info.manual, px || 0);
   bd.innerHTML = `
     <div class="breakdown-row">
       <span>On-chain (wallets)</span>
@@ -4681,7 +4783,8 @@ function renderAsset() {
         ? "USD (always 1.00)"
         : `USD per ${coin.symbol}`;
   if (document.activeElement !== priceInput && !manualPriceDirty) {
-    priceInput.value = px != null && px > 0 ? String(roundPriceInput(px)) : "";
+    const lotPx = unitUsdFromQuote(coin, px) ?? px;
+    priceInput.value = lotPx != null && lotPx > 0 ? String(roundPriceInput(lotPx)) : "";
   }
 
   // Exchange fee % (saved setting, editable here)
@@ -4703,7 +4806,7 @@ function renderAsset() {
   for (const entry of holding.manual) {
     const card = document.createElement("div");
     card.className = "addr-card";
-    const v = entry.amount * (px || 0);
+    const v = qtyToUsd(coin, entry.amount, px || 0);
     const label = entry.label || "Manual";
     const lotCost =
       entry.costUsd != null
@@ -4768,7 +4871,7 @@ function renderAsset() {
     if (st.loading) meta = `<span>Looking up…</span>`;
     else if (st.error) meta = `<span class="err">${escapeHtml(st.error)}</span>`;
     else if (st.balance != null) {
-      const v = st.balance * (px || 0);
+      const v = qtyToUsd(coin, st.balance, px || 0);
       meta = `
         <span class="ok">${formatAmt(st.balance, coin.symbol)}</span>
         <span>${formatUsd(v)}</span>
@@ -5359,6 +5462,9 @@ function importData(file) {
         ),
         futurePrices: normalizeFuturePrices(
           data.futurePrices != null ? data.futurePrices : store.futurePrices
+        ),
+        futureQty: normalizeFutureQty(
+          data.futureQty != null ? data.futureQty : store.futureQty
         ),
         elementDamage: normalizeElementDamage(
           data.elementDamage != null ? data.elementDamage : store.elementDamage
@@ -6965,6 +7071,37 @@ function wire() {
     e.stopPropagation();
     const id = btn.getAttribute("data-edit-quote");
     if (id) openPriceModal(id, "quote");
+  });
+
+  document.getElementById("crystal-holdings-list")?.addEventListener("click", (e) => {
+    if (e.target.closest("[data-open-tv]")) return;
+    const reset = e.target.closest("[data-crystal-qty-reset]");
+    if (reset && !reset.disabled) {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = reset.getAttribute("data-crystal-qty-reset");
+      if (id) {
+        setFutureQty(id, null);
+        renderHome();
+      }
+      return;
+    }
+    const step = e.target.closest("[data-crystal-qty]");
+    if (step) {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = step.getAttribute("data-crystal-qty");
+      const dir = Number(step.getAttribute("data-dir"));
+      if (id && (dir === 1 || dir === -1)) stepCrystalQty(id, dir);
+      return;
+    }
+    const edit = e.target.closest("[data-future-edit]");
+    if (edit) {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = edit.getAttribute("data-future-edit");
+      if (id) openFuturePriceModal(id);
+    }
   });
 
   document.getElementById("modal-future-cancel")?.addEventListener("click", closePriceModal);
